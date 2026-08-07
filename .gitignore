@@ -1,0 +1,48 @@
+# ---- Secrets ----
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets.h
+!secrets.h.example
+infra/mosquitto/passwd
+infra/mosquitto/*.crt
+
+# ---- Python ----
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# ---- Données & artefacts ----
+data/
+*.parquet
+*.duckdb
+models/*.pkl
+mlruns/
+
+# ---- Docker / volumes locaux ----
+infra/mosquitto/data/
+infra/mosquitto/log/
+volumes/
+
+# ---- dbt ----
+transforms/dbt/target/
+transforms/dbt/dbt_packages/
+transforms/dbt/logs/
+
+# ---- Airflow ----
+orchestration/airflow/logs/
+airflow.db
+airflow.cfg
+webserver_config.py
+
+# ---- OS / éditeur ----
+.DS_Store
+Thumbs.db
+.vscode/settings.json
+.idea/
