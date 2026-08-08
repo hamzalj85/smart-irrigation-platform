@@ -10,7 +10,85 @@ services:
       - ./infra/mosquitto/passwd:/mosquitto/config/passwd:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
+  kafka:
+    image: apache/kafka:3.9.0
+    container_name: irrigation-kafka
+    restart: unless-stopped
+    ports:
+      - "9092:9092"
+    environment:
+      CLUSTER_ID: irrigation-kraft-cluster
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LISTENERS: INTERNAL://:19092,CONTROLLER://:9093,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:19092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:19092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
 
+  kafka-init:
+    image: apache/kafka:3.9.0
+    container_name: irrigation-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/bash", "-c"]
+    command: 
+        - |
+          set -e
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic irrigation.telemetry --partitions 3 --replication-factor 1 --config retention.ms=604800000
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --create --if-not-exists --topic irrigation.telemetry.dlq --partitions 1 --replication-factor 1 --config retention.ms=2592000000
+          echo "--- topics ---"
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:19092 --list
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: irrigation-kafka-ui
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: irrigation
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:19092
+      DYNAMIC_CONFIG_ENABLED: "true"
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+  bridge:
+    build: ./ingestion/bridge
+    container_name: irrigation-bridge
+    restart: unless-stopped
+    depends_on:
+      mosquitto:
+        condition: service_started
+      kafka:
+        condition: service_healthy
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MOSQUITTO_BRIDGE_USER: ${MOSQUITTO_BRIDGE_USER}
+      MOSQUITTO_BRIDGE_PASSWORD: ${MOSQUITTO_BRIDGE_PASSWORD}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      KAFKA_TELEMETRY_TOPIC: irrigation.telemetry
+      KAFKA_DLQ_TOPIC: irrigation.telemetry.dlq  
 volumes:
   mosquitto_data:
   mosquitto_log:
+  kafka_data:
