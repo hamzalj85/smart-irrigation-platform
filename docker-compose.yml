@@ -87,8 +87,27 @@ services:
       MOSQUITTO_BRIDGE_PASSWORD: ${MOSQUITTO_BRIDGE_PASSWORD}
       KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       KAFKA_TELEMETRY_TOPIC: irrigation.telemetry
-      KAFKA_DLQ_TOPIC: irrigation.telemetry.dlq  
+      KAFKA_DLQ_TOPIC: irrigation.telemetry.dlq
+
+  spark-streaming:
+    build: ./streaming/spark
+    container_name: irrigation-spark
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      KAFKA_TELEMETRY_TOPIC: irrigation.telemetry
+      CHECKPOINT_DIR: /checkpoints
+      STARTING_OFFSETS: earliest
+      SPARK_LOCAL_IP: 127.0.0.1
+      SPARK_LOG_LEVEL: WARN
+    volumes:
+      - spark_checkpoints:/checkpoints
+
 volumes:
   mosquitto_data:
   mosquitto_log:
   kafka_data:
+  spark_checkpoints:
