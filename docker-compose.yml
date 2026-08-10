@@ -100,12 +100,13 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       KAFKA_TELEMETRY_TOPIC: irrigation.telemetry
       CHECKPOINT_DIR: /checkpoints
+      DATA_DIR: /data
       STARTING_OFFSETS: earliest
       SPARK_LOCAL_IP: 127.0.0.1
       SPARK_LOG_LEVEL: WARN
     volumes:
       - spark_checkpoints:/checkpoints
-
+      - ./data:/data
 volumes:
   mosquitto_data:
   mosquitto_log:
