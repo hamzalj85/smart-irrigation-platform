@@ -16,6 +16,31 @@ from pyspark.sql import functions as F
 from pyspark.sql.types import (DoubleType, IntegerType, StringType,
                                StructField, StructType)
 
+from pyspark.sql.streaming import StreamingQueryListener
+
+
+class ProgressLogger(StreamingQueryListener):
+    """Expose ce que les logs Spark ne montrent pas : les lignes que le
+    watermark a jetées. Sans ça, une perte de données est invisible."""
+
+    def onQueryStarted(self, event):
+        print(f"[listener] requête démarrée : {event.name}", flush=True)
+
+    def onQueryProgress(self, event):
+        p = event.progress
+        dropped = sum(getattr(so, "numRowsDroppedByWatermark", 0)
+                      for so in (p.stateOperators or []))
+        out = getattr(p.sink, "numOutputRows", -1)
+        wm = (p.eventTime or {}).get("watermark", "-")
+        flag = "  <-- PERTE" if dropped else ""
+        print(f"[{p.name}] input={p.numInputRows} output={out} "
+              f"droppedByWatermark={dropped} watermark={wm}{flag}", flush=True)
+    def onQueryIdle(self, event):
+        pass
+
+    def onQueryTerminated(self, event):
+        print(f"[listener] terminée : {event.id}", flush=True)
+
 # ---------------------------------------------------------------------------
 # Contrat de données
 # ---------------------------------------------------------------------------
@@ -51,15 +76,33 @@ WATERMARK = "10 minutes"
 # Session et source
 # ---------------------------------------------------------------------------
 def build_session(app_name: str = "telemetry-job") -> SparkSession:
-    return (
+    builder = (
         SparkSession.builder
         .appName(app_name)
         .master(os.getenv("SPARK_MASTER", "local[2]"))
         .config("spark.sql.session.timeZone", "UTC")
         .config("spark.sql.shuffle.partitions", "3")
         .config("spark.sql.streaming.metricsEnabled", "true")
-        .getOrCreate()
     )
+
+    endpoint = os.getenv("S3_ENDPOINT")
+    if endpoint:
+        builder = (
+            builder
+            .config("spark.hadoop.fs.s3a.endpoint", endpoint)
+            .config("spark.hadoop.fs.s3a.access.key", os.environ["S3_ACCESS_KEY"])
+            .config("spark.hadoop.fs.s3a.secret.key", os.environ["S3_SECRET_KEY"])
+            # MinIO n'a pas de DNS par bucket : l'URL est /bucket/objet,
+            # pas bucket.host/objet. Sans ceci, chaque requête échoue.
+            .config("spark.hadoop.fs.s3a.path.style.access", "true")
+            .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+            .config("spark.hadoop.fs.s3a.impl",
+                    "org.apache.hadoop.fs.s3a.S3AFileSystem")
+            .config("spark.hadoop.fs.s3a.aws.credentials.provider",
+                    "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
+            .config("spark.hadoop.fs.s3a.fast.upload", "true")
+        )
+    return builder.getOrCreate()
 
 
 def read_kafka(spark: SparkSession) -> DataFrame:
@@ -111,9 +154,12 @@ def apply_quality_gates(df: DataFrame) -> DataFrame:
         *[F.when((F.col(c) < lo) | (F.col(c) > hi), F.lit(c))
           for c, (lo, hi) in RANGES.items()]))
 
-    future = F.col("ts") > F.current_timestamp() + F.expr(
+    # Référence = l'heure d'ingestion du broker, pas l'horloge murale.
+    # Le verdict devient déterministe : rejouer les mêmes données donne
+    # exactement les mêmes rejets, quel que soit le moment du traitement.
+    future = F.col("ts") > F.col("kafka_ts") + F.expr(
         f"INTERVAL {MAX_FUTURE_MINUTES} MINUTES")
-    too_old = F.col("ts") < F.current_timestamp() - F.expr(
+    too_old = F.col("ts") < F.col("kafka_ts") - F.expr(
         f"INTERVAL {MAX_LATE_HOURS} HOURS")
 
     return df.withColumn(
@@ -192,6 +238,7 @@ def start_quality_monitor(df: DataFrame, ckpt: str):
 def main() -> None:
     spark = build_session()
     spark.sparkContext.setLogLevel(os.getenv("SPARK_LOG_LEVEL", "WARN"))
+    spark.streams.addListener(ProgressLogger())
 
     data_dir = os.getenv("DATA_DIR", "/data")
     ckpt = os.getenv("CHECKPOINT_DIR", "/checkpoints")

@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG SPARK_V=3.5.3
 ARG KAFKA_V=3.4.1
 ARG POOL_V=2.11.1
+ARG HADOOP_V=3.3.4
+ARG AWS_SDK_V=1.12.262
 
 RUN pip install --no-cache-dir "pyspark==${SPARK_V}"
 
@@ -22,7 +24,11 @@ RUN set -eux; base=https://repo1.maven.org/maven2; \
     curl -fsSL -o "$SPARK_JARS/kafka-clients-${KAFKA_V}.jar" \
         "$base/org/apache/kafka/kafka-clients/${KAFKA_V}/kafka-clients-${KAFKA_V}.jar"; \
     curl -fsSL -o "$SPARK_JARS/commons-pool2-${POOL_V}.jar" \
-        "$base/org/apache/commons/commons-pool2/${POOL_V}/commons-pool2-${POOL_V}.jar"
+        "$base/org/apache/commons/commons-pool2/${POOL_V}/commons-pool2-${POOL_V}.jar"; \
+    curl -fsSL -o "$SPARK_JARS/hadoop-aws-${HADOOP_V}.jar" \
+        "$base/org/apache/hadoop/hadoop-aws/${HADOOP_V}/hadoop-aws-${HADOOP_V}.jar"; \
+    curl -fsSL -o "$SPARK_JARS/aws-java-sdk-bundle-${AWS_SDK_V}.jar" \
+        "$base/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_V}/aws-java-sdk-bundle-${AWS_SDK_V}.jar"    
 
 WORKDIR /app
 COPY telemetry_job.py .
