@@ -194,6 +194,13 @@ def clean_records(df: DataFrame) -> DataFrame:
                 "kafka_partition", "kafka_offset")
     )
 
+def device_state_stream(df: DataFrame) -> DataFrame:
+    """Flux destine a MongoDB : ni watermark ni deduplication.
+
+    L'upsert conditionnel cote Mongo est deja idempotent et insensible a
+    l'ordre. Un operateur a etat ici serait un point de fragilite gratuit.
+    """
+    return df.filter(F.col("quality_reason").isNull())
 
 def quarantined_records(df: DataFrame) -> DataFrame:
     """Flux rejeté : motif + payload original, partitionné par date d'ingestion."""
@@ -319,7 +326,7 @@ def main() -> None:
     start_parquet_sink(bad, "quarantine", f"{data_dir}/quarantine",
                        ["quality_rule", "date"], ckpt)
     if os.getenv("MONGO_URI"):
-        start_mongo_sink(clean_records(checked), ckpt)
+        start_mongo_sink(device_state_stream(checked), ckpt)
     if os.getenv("QUALITY_MONITOR", "true").lower() == "true":
         start_quality_monitor(bad, ckpt)
 

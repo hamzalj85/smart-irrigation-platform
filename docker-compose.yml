@@ -92,7 +92,7 @@ services:
   spark-streaming:
     build: ./streaming/spark
     container_name: irrigation-spark
-    restart: unless-stopped
+    restart: on-failure:3
     depends_on:
       kafka:
         condition: service_healthy
