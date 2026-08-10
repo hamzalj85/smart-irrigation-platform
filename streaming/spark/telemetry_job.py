@@ -18,6 +18,10 @@ from pyspark.sql.types import (DoubleType, IntegerType, StringType,
 
 from pyspark.sql.streaming import StreamingQueryListener
 
+from datetime import datetime, timezone
+
+from pyspark.sql import Window
+
 
 class ProgressLogger(StreamingQueryListener):
     """Expose ce que les logs Spark ne montrent pas : les lignes que le
@@ -70,6 +74,8 @@ REQUIRED_FIELDS = ["device_id", "site_id", "ts", "soil_moisture_pct"]
 MAX_FUTURE_MINUTES = 5
 MAX_LATE_HOURS = 24
 WATERMARK = "10 minutes"
+STATE_FIELDS = ["site_id", "ts", "soil_moisture_pct", "soil_raw",
+                "air_temp_c", "air_humidity_pct", "battery_v", "fw_version"]
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +207,67 @@ def quarantined_records(df: DataFrame) -> DataFrame:
                 "raw_value")
     )
 
+_mongo_client = None
+
+
+def _device_state_collection():
+    """Client réutilisé entre micro-lots : ouvrir une connexion toutes les
+    15 secondes serait du gaspillage pur."""
+    global _mongo_client
+    from pymongo import MongoClient
+    if _mongo_client is None:
+        _mongo_client = MongoClient(os.environ["MONGO_URI"],
+                                    serverSelectionTimeoutMS=5000)
+    return (_mongo_client[os.getenv("MONGO_DB", "irrigation")]
+                         [os.getenv("MONGO_COLLECTION", "device_state")])
+
+
+def upsert_device_state(batch_df: DataFrame, batch_id: int) -> None:
+    """Écrit l'état courant de chaque appareil, sans jamais reculer.
+
+    Deux opérations par appareil :
+      1. $setOnInsert crée le document s'il n'existe pas encore ;
+      2. $set ne s'applique QUE si le ts stocké est plus ancien.
+    Un micro-lot en retard ne peut donc pas écraser un état plus récent.
+    """
+    from pymongo import UpdateOne
+
+    window = Window.partitionBy("device_id").orderBy(F.col("ts").desc())
+    rows = (batch_df
+            .withColumn("_rn", F.row_number().over(window))
+            .filter(F.col("_rn") == 1)
+            .drop("_rn")
+            .collect())          # une ligne par appareil : jamais volumineux
+    if not rows:
+        return
+
+    now = datetime.now(timezone.utc)
+    ops = []
+    for r in rows:
+        doc = {f: r[f] for f in STATE_FIELDS}
+        doc["device_id"] = r["device_id"]
+        doc["updated_at"] = now
+        ops.append(UpdateOne({"_id": r["device_id"]},
+                             {"$setOnInsert": doc}, upsert=True))
+        ops.append(UpdateOne({"_id": r["device_id"], "ts": {"$lt": r["ts"]}},
+                             {"$set": doc}))
+
+    result = _device_state_collection().bulk_write(ops, ordered=True)
+    print(f"[device-state] batch={batch_id} devices={len(rows)} "
+          f"upserted={result.upserted_count} modified={result.modified_count}",
+          flush=True)
+
+
+def start_mongo_sink(df: DataFrame, ckpt: str):
+    return (
+        df.writeStream
+        .queryName("device-state")
+        .outputMode("append")
+        .foreachBatch(upsert_device_state)
+        .option("checkpointLocation", f"{ckpt}/device-state")
+        .trigger(processingTime="15 seconds")
+        .start()
+    )
 
 # ---------------------------------------------------------------------------
 # Sinks
@@ -251,6 +318,8 @@ def main() -> None:
                        ["site_id", "date"], ckpt)
     start_parquet_sink(bad, "quarantine", f"{data_dir}/quarantine",
                        ["quality_rule", "date"], ckpt)
+    if os.getenv("MONGO_URI"):
+        start_mongo_sink(clean_records(checked), ckpt)
     if os.getenv("QUALITY_MONITOR", "true").lower() == "true":
         start_quality_monitor(bad, ckpt)
 
