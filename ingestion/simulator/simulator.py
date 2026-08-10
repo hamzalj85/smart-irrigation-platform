@@ -18,7 +18,7 @@ import signal
 import sys
 import time
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import paho.mqtt.client as mqtt
@@ -49,7 +49,7 @@ class Device:
     offline_until: float = 0.0
 
     @classmethod
-    def create(cls, index: int, site_id: str, rng: random.Random) -> "Device":
+    def create(cls, index: int, site_id: str, rng: random.Random) -> Device:
         return cls(
             device_id=f"esp32-{index:02d}",
             site_id=site_id,
@@ -216,7 +216,7 @@ def main() -> int:
                    help="accélère la physique du sol (120 = 1 cycle en ~2 min)")    
     p.add_argument("--site-id", default="site-a")
     p.add_argument("--host", default=os.getenv("MQTT_HOST", "localhost"))
-    p.add_argument("--port", type=int, default=int(os.getenv("MQTT_PORT", 1883)))
+    p.add_argument("--port", type=int, default=int(os.getenv("MQTT_PORT", "1883")))
     p.add_argument("--username", default=os.getenv("MOSQUITTO_ESP32_USER", "esp32"))
     p.add_argument("--password", default=os.getenv("MOSQUITTO_ESP32_PASSWORD"))
     p.add_argument("--seed", type=int, default=None,

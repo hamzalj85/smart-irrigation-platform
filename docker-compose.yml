@@ -80,6 +80,8 @@ services:
         condition: service_started
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     environment:
       MQTT_HOST: mosquitto
       MQTT_PORT: 1883
@@ -92,12 +94,18 @@ services:
   spark-streaming:
     build: ./streaming/spark
     container_name: irrigation-spark
+    ports:
+      - "4040:4040"
     restart: on-failure:3
     depends_on:
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       minio:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
       mongodb:
         condition: service_healthy
     environment:

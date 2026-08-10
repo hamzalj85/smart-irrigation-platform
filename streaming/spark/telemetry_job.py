@@ -10,40 +10,29 @@ en rendent un autre. Elles se testent donc en batch, sans Kafka (Phase 10).
 from __future__ import annotations
 
 import os
-
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql import functions as F
-from pyspark.sql.types import (DoubleType, IntegerType, StringType,
-                               StructField, StructType)
-
-from pyspark.sql.streaming import StreamingQueryListener
-
 from datetime import datetime, timezone
+from typing import Any
 
-from pyspark.sql import Window
+try:
+    from pyspark.sql import DataFrame, SparkSession, Window
+    from pyspark.sql import functions as F
+    from pyspark.sql.streaming import StreamingQueryListener
+    from pyspark.sql.types import (
+        DoubleType,
+        IntegerType,
+        StringType,
+        StructField,
+        StructType,
+    )
+except ImportError:  # pragma: no cover - exercised in environments without PySpark
+    DataFrame = Any  # type: ignore[assignment]
+    SparkSession = Any  # type: ignore[assignment]
+    Window = Any  # type: ignore[assignment]
+    F = Any  # type: ignore[assignment]
+    StreamingQueryListener = object  # type: ignore[assignment]
+    DoubleType = IntegerType = StringType = StructField = StructType = Any  # type: ignore[assignment]
 
 
-class ProgressLogger(StreamingQueryListener):
-    """Expose ce que les logs Spark ne montrent pas : les lignes que le
-    watermark a jetées. Sans ça, une perte de données est invisible."""
-
-    def onQueryStarted(self, event):
-        print(f"[listener] requête démarrée : {event.name}", flush=True)
-
-    def onQueryProgress(self, event):
-        p = event.progress
-        dropped = sum(getattr(so, "numRowsDroppedByWatermark", 0)
-                      for so in (p.stateOperators or []))
-        out = getattr(p.sink, "numOutputRows", -1)
-        wm = (p.eventTime or {}).get("watermark", "-")
-        flag = "  <-- PERTE" if dropped else ""
-        print(f"[{p.name}] input={p.numInputRows} output={out} "
-              f"droppedByWatermark={dropped} watermark={wm}{flag}", flush=True)
-    def onQueryIdle(self, event):
-        pass
-
-    def onQueryTerminated(self, event):
-        print(f"[listener] terminée : {event.id}", flush=True)
 
 # ---------------------------------------------------------------------------
 # Contrat de données
@@ -81,6 +70,29 @@ STATE_FIELDS = ["site_id", "ts", "soil_moisture_pct", "soil_raw",
 # ---------------------------------------------------------------------------
 # Session et source
 # ---------------------------------------------------------------------------
+
+class ProgressLogger(StreamingQueryListener):
+    """Expose ce que les logs Spark ne montrent pas : les lignes que le
+    watermark a jetées. Sans ça, une perte de données est invisible."""
+
+    def onQueryStarted(self, event):
+        print(f"[listener] query started : {event.name}", flush=True)
+
+    def onQueryProgress(self, event):
+        p = event.progress
+        dropped = sum(getattr(so, "numRowsDroppedByWatermark", 0)
+                      for so in (p.stateOperators or []))
+        out = getattr(p.sink, "numOutputRows", -1)
+        wm = (p.eventTime or {}).get("watermark", "-")
+        flag = "  <-- PERTE" if dropped else ""
+        print(f"[{p.name}] input={p.numInputRows} output={out} "
+              f"droppedByWatermark={dropped} watermark={wm}{flag}", flush=True)
+    def onQueryIdle(self, event):
+        pass
+
+    def onQueryTerminated(self, event):
+        print(f"[listener] terminated : {event.id}", flush=True)
+
 def build_session(app_name: str = "telemetry-job") -> SparkSession:
     builder = (
         SparkSession.builder
@@ -118,7 +130,7 @@ def read_kafka(spark: SparkSession) -> DataFrame:
                 os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:19092"))
         .option("subscribe", os.getenv("KAFKA_TELEMETRY_TOPIC",
                                        "irrigation.telemetry"))
-        .option("startingOffsets", os.getenv("STARTING_OFFSETS", "earliest"))
+        .option("startingOffsets", os.getenv("STARTING_OFFSETS", "latest"))
         .option("maxOffsetsPerTrigger", os.getenv("MAX_OFFSETS", "2000"))
         .option("failOnDataLoss", "false")
         .load()
@@ -314,8 +326,8 @@ def main() -> None:
     spark.sparkContext.setLogLevel(os.getenv("SPARK_LOG_LEVEL", "WARN"))
     spark.streams.addListener(ProgressLogger())
 
-    data_dir = os.getenv("DATA_DIR", "/data")
-    ckpt = os.getenv("CHECKPOINT_DIR", "/checkpoints")
+    data_dir = os.getenv("DATA_DIR", "/data").rstrip("/")
+    ckpt = os.getenv("CHECKPOINT_DIR", "/checkpoints").rstrip("/")
 
     checked = apply_quality_gates(parse_telemetry(read_kafka(spark)))
     clean = clean_records(checked)

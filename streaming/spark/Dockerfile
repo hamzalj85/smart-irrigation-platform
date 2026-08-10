@@ -30,7 +30,13 @@ RUN set -eux; base=https://repo1.maven.org/maven2; \
     curl -fsSL -o "$SPARK_JARS/aws-java-sdk-bundle-${AWS_SDK_V}.jar" \
         "$base/com/amazonaws/aws-java-sdk-bundle/${AWS_SDK_V}/aws-java-sdk-bundle-${AWS_SDK_V}.jar"    
 
+RUN useradd --create-home --uid 1000 spark \
+    && mkdir -p /checkpoints \
+    && chown -R spark:spark /checkpoints
+
+USER spark
+
 WORKDIR /app
-COPY telemetry_job.py .
+COPY --chown=spark:spark telemetry_job.py .
 
 CMD ["python", "telemetry_job.py"]
