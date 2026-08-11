@@ -1,0 +1,29 @@
+version: 2
+
+models:
+  - name: fct_readings_hourly
+    description: Agregats horaires par appareil. Grain = (device_id, hour_start).
+    columns:
+      - name: device_id
+        tests: [not_null]
+      - name: hour_start
+        tests: [not_null]
+      - name: reading_count
+        description: Nombre de mesures valides dans l'heure.
+        tests:
+          - not_null
+          - accepted_range: {min_value: 1, max_value: 100000}
+      - name: avg_soil_moisture_pct
+        tests:
+          - accepted_range: {min_value: 0, max_value: 100}
+
+  - name: dim_devices
+    description: Un enregistrement par appareil , etat, anciennete, sante batterie.
+    columns:
+      - name: device_id
+        tests: [not_null, unique]
+      - name: total_readings
+        tests: [not_null]
+      - name: min_battery_v
+        tests:
+          - accepted_range: {min_value: 2.5, max_value: 5.0}
