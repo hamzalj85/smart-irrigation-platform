@@ -36,10 +36,17 @@ def connect(env: dict[str, str]) -> duckdb.DuckDBPyConnection:
 
 
 def scalar(con, sql: str, default: int = 0) -> int:
+    """Absence de fichiers = 0. Toute autre erreur remonte : une panne
+    d'authentification ne doit jamais ressembler a un jeu de donnees vide."""
     try:
         return con.execute(sql).fetchone()[0]
-    except duckdb.IOException:
-        return default
+    except duckdb.Error as exc:
+        message = str(exc)
+        if "No files found" in message:
+            return default
+        raise RuntimeError(
+            f"Acces a MinIO impossible : {message.splitlines()[0]}"
+        ) from exc
 
 
 def main() -> int:
@@ -59,7 +66,9 @@ def main() -> int:
             FROM read_parquet('{quar_glob}', hive_partitioning = true)
             GROUP BY 1 ORDER BY n DESC
         """).fetchall()
-    except duckdb.IOException:
+    except duckdb.Error as exc:
+        if "No files found" not in str(exc):
+            raise
         rows = []
 
     bad = sum(n for _, n in rows)

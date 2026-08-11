@@ -1,0 +1,5 @@
+dbt-core==1.9.10
+dbt-duckdb==1.9.6
+duckdb
+ruff
+pytest
