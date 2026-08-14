@@ -1,0 +1,19 @@
+# Normalise tout en LF dans le depot, quelle que soit la machine.
+* text=auto eol=lf
+
+# Scripts qui doivent imperativement rester en LF (executes sous Linux)
+*.sh        text eol=lf
+*.sql       text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+Dockerfile  text eol=lf
+
+# Scripts Windows
+*.ps1       text eol=crlf
+
+# Binaires : ne jamais toucher
+*.png       binary
+*.jpg       binary
+*.gif       binary
+*.pdf       binary
+*.parquet   binary
