@@ -46,3 +46,10 @@ webserver_config.py
 Thumbs.db
 .vscode/settings.json
 .idea/
+
+# dbt (le repertoire logs/ est cree a la racine quand on lance dbt d'ailleurs)
+logs/
+transforms/dbt/.user.yml
+
+# notes locales
+readme_notes.txt

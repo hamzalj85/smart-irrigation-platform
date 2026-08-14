@@ -1,3 +1,38 @@
+# Configuration partagee par les cinq conteneurs Airflow.
+# Une ancre YAML (&) definie ici, referencee plus bas par <<: *airflow-common.
+x-airflow-common: &airflow-common
+  build: ./orchestration/airflow
+  environment:
+    # --- Airflow ---------------------------------------------------------
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: >-
+      postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD}@airflow-postgres:5432/airflow
+    AIRFLOW__API__BASE_URL: http://localhost:8082
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    # Developpement uniquement : desactive l'authentification de l'interface.
+    # En production on brancherait un vrai gestionnaire d'identites.
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
+    # --- Acces aux services de la plateforme -----------------------------
+    MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/
+    MONGO_DB: irrigation
+    MONGO_COLLECTION: device_state
+    MQTT_HOST: mosquitto
+    MQTT_PORT: "1883"
+    MOSQUITTO_BRIDGE_USER: ${MOSQUITTO_BRIDGE_USER}
+    MOSQUITTO_BRIDGE_PASSWORD: ${MOSQUITTO_BRIDGE_PASSWORD}
+    MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+    MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    MINIO_BUCKET: ${MINIO_BUCKET}
+    S3_ENDPOINT_HOST: minio:9000
+  volumes:
+    - ./orchestration/airflow/dags:/opt/airflow/dags
+    - ./transforms/dbt:/opt/airflow/dbt
+    - airflow_logs:/opt/airflow/logs
+
 services:
   mosquitto:
     image: eclipse-mosquitto:2.0
@@ -198,6 +233,85 @@ services:
       mongodb:
         condition: service_healthy
 
+  # ---------------------------------------------------------------------------
+  # Orchestration : Airflow 3 (LocalExecutor, metadonnees dans Postgres)
+  # ---------------------------------------------------------------------------
+  airflow-postgres:
+    image: postgres:16
+    container_name: irrigation-airflow-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD}
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: irrigation-airflow-init
+    restart: "no"
+    depends_on:
+      airflow-postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        airflow db migrate
+        echo "--- airflow pret ---"
+        airflow version
+
+  airflow-apiserver:
+    <<: *airflow-common
+    container_name: irrigation-airflow-api
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: api-server
+    ports:
+      - "8082:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/monitor/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 12
+      start_period: 45s
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: irrigation-airflow-scheduler
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: scheduler
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    container_name: irrigation-airflow-dag-processor
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: dag-processor
+
+  airflow-triggerer:
+    <<: *airflow-common
+    container_name: irrigation-airflow-triggerer
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    command: triggerer
+
 volumes:
   mosquitto_data:
   mosquitto_log:
@@ -205,3 +319,5 @@ volumes:
   mongo_data:
   spark_checkpoints:
   minio_data:
+  airflow_db:
+  airflow_logs:
