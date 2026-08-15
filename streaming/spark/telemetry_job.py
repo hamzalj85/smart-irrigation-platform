@@ -10,7 +10,7 @@ en rendent un autre. Elles se testent donc en batch, sans Kafka (Phase 10).
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 try:
@@ -260,7 +260,7 @@ def upsert_device_state(batch_df: DataFrame, batch_id: int) -> None:
     if not rows:
         return
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     ops = []
     for r in rows:
         doc = {f: r[f] for f in STATE_FIELDS}

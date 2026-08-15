@@ -31,6 +31,7 @@ x-airflow-common: &airflow-common
   volumes:
     - ./orchestration/airflow/dags:/opt/airflow/dags
     - ./transforms/dbt:/opt/airflow/dbt
+    - ./ml:/opt/airflow/ml
     - airflow_logs:/opt/airflow/logs
 
 services:

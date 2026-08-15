@@ -19,7 +19,7 @@ import sys
 import time
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import paho.mqtt.client as mqtt
 
@@ -136,7 +136,7 @@ def inject_fault(payload: dict, rng: random.Random, stats: Counter) -> list[dict
     elif kind == "stale_ts":
         # Horloge non synchronisée après un reset : l'appareil réémet
         # des données vieilles de plusieurs heures.
-        old = datetime.now(timezone.utc) - timedelta(hours=rng.uniform(2, 30))
+        old = datetime.now(UTC) - timedelta(hours=rng.uniform(2, 30))
         bad["ts"] = old.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     elif kind == "malformed":
@@ -213,7 +213,7 @@ def main() -> int:
     p.add_argument("--offline-rate", type=unit_ratio, default=0.0,
                    help="probabilité par cycle qu'un appareil se taise")
     p.add_argument("--speed", type=float, default=1.0,
-                   help="accélère la physique du sol (120 = 1 cycle en ~2 min)")    
+                   help="accélère la physique du sol (120 = 1 cycle en ~2 min)")
     p.add_argument("--site-id", default="site-a")
     p.add_argument("--host", default=os.getenv("MQTT_HOST", "localhost"))
     p.add_argument("--port", type=int, default=int(os.getenv("MQTT_PORT", "1883")))
@@ -248,7 +248,7 @@ def main() -> int:
     try:
         while running:
             cycle_start = time.monotonic()
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             for dev in devices:
                 client = clients[dev.device_id]

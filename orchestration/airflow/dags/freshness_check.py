@@ -21,6 +21,8 @@ every parse. Only what the file needs to *declare* the DAG belongs at the top.
 """
 from __future__ import annotations
 
+from datetime import UTC
+
 import pendulum
 from airflow.sdk import dag, task
 
@@ -45,7 +47,7 @@ def freshness_check():
     def last_seen_from_mongo() -> list[dict]:
         """Age of the most recent valid reading, per device."""
         import os
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         from pymongo import MongoClient
 
@@ -54,12 +56,12 @@ def freshness_check():
             collection = client[os.getenv("MONGO_DB", "irrigation")][
                 os.getenv("MONGO_COLLECTION", "device_state")
             ]
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             rows = []
             for doc in collection.find({}, {"device_id": 1, "site_id": 1, "ts": 1}):
                 ts = doc["ts"]
                 if ts.tzinfo is None:           # Mongo renvoie du naif en UTC
-                    ts = ts.replace(tzinfo=timezone.utc)
+                    ts = ts.replace(tzinfo=UTC)
                 rows.append({
                     "device_id": doc["device_id"],
                     "site_id": doc.get("site_id"),

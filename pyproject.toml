@@ -1,0 +1,40 @@
+[project]
+name = "smart-irrigation-platform"
+version = "1.0.0"
+description = "IoT to lakehouse pipeline: MQTT, Kafka, Spark, MinIO, dbt, Airflow"
+requires-python = ">=3.11"
+
+# ---------------------------------------------------------------------------
+# Ruff : le jeu de regles est declare explicitement, pas herite des defauts.
+# Les defauts changent d'une version a l'autre ; une CI doit etre deterministe.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [
+    ".venv",
+    "data",
+    "transforms/dbt/target",
+    "transforms/dbt/dbt_packages",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "W",    # warnings
+    "I",    # import sorting
+    "UP",   # pyupgrade
+    "B",    # bugbear : pieges courants
+    "C4",   # comprehensions
+    "SIM",  # simplifications
+    "RUF",  # regles propres a ruff
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Ces fichiers manipulent sys.path avant d'importer : c'est intentionnel.
+"ml/*" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["ml", "ingestion/simulator", "streaming/spark"]

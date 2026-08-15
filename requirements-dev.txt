@@ -3,3 +3,7 @@ dbt-duckdb==1.9.6
 duckdb
 ruff
 pytest
+scikit-learn
+joblib
+pandas
+boto3

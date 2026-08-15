@@ -7,7 +7,10 @@ FROM apache/airflow:3.1.8-python3.12
 RUN pip install --no-cache-dir \
         "duckdb>=1.0,<2" \
         "pymongo>=4.8,<5" \
-        "paho-mqtt>=2.1,<3"
+        "paho-mqtt>=2.1,<3" \
+        "scikit-learn>=1.5,<2" \
+        "joblib>=1.4,<2" \
+        "boto3>=1.34,<2"
 
 # --- dbt dans un environnement virtuel separe --------------------------------
 # dbt et Airflow ont des dependances communes (pydantic, protobuf, jinja2) dont
