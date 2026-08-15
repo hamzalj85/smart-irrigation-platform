@@ -1,0 +1,16 @@
+# Source de donnees provisionnee au demarrage : aucun clic dans l'interface.
+# L'uid est fixe ("prometheus") car les tableaux de bord y font reference.
+# Sans uid stable, un dashboard importe pointerait vers une source inexistante.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s        # doit correspondre au scrape_interval
+      httpMethod: POST

@@ -1,0 +1,1 @@
+La configuration (dashboards, sources de données, topics, bucket) est reconstruite automatiquement au démarrage. Les données, elles, vivent dans des volumes Docker : docker compose down -v les détruit volontairement. Après une remise à zéro complète, ml/generate_history.py régénère un historique identique grâce à une graine aléatoire fixe.

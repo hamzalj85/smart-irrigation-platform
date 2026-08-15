@@ -1,0 +1,16 @@
+# Charge tous les fichiers JSON deposes dans /var/lib/grafana/dashboards.
+# Les tableaux de bord vivent donc dans le depot Git, pas dans la base interne
+# de Grafana : un clone frais retrouve exactement les memes ecrans.
+apiVersion: 1
+
+providers:
+  - name: irrigation
+    orgId: 1
+    folder: Irrigation
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false      # l'interface ne peut pas ecraser le fichier
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
