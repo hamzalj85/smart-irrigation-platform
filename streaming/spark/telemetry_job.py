@@ -13,6 +13,9 @@ import os
 from datetime import UTC, datetime
 from typing import Any
 
+from prometheus_client import Counter as PromCounter
+from prometheus_client import Gauge, start_http_server
+
 try:
     from pyspark.sql import DataFrame, SparkSession, Window
     from pyspark.sql import functions as F
@@ -63,6 +66,50 @@ REQUIRED_FIELDS = ["device_id", "site_id", "ts", "soil_moisture_pct"]
 MAX_FUTURE_MINUTES = 5
 MAX_LATE_HOURS = 24
 WATERMARK = "10 minutes"
+# ---------------------------------------------------------------------------
+# Metriques Prometheus
+#
+# Ce que Spark n'expose pas de lui-meme : les lignes jetees par le watermark,
+# le retard du watermark, et le detail des rejets qualite. Ce sont exactement
+# les chiffres qu'on veut voir sur un tableau de bord.
+# ---------------------------------------------------------------------------
+QUERY_INPUT_ROWS = PromCounter(
+    "irrigation_spark_input_rows_total",
+    "Lignes lues depuis Kafka, par requete de streaming", ["query"],
+)
+QUERY_OUTPUT_ROWS = PromCounter(
+    "irrigation_spark_output_rows_total",
+    "Lignes ecrites par le sink, par requete de streaming", ["query"],
+)
+WATERMARK_DROPPED = PromCounter(
+    "irrigation_spark_rows_dropped_by_watermark_total",
+    "Lignes arrivees trop tard et abandonnees par un operateur a etat", ["query"],
+)
+BATCH_DURATION = Gauge(
+    "irrigation_spark_batch_duration_seconds",
+    "Duree du dernier micro-lot", ["query"],
+)
+QUARANTINE = PromCounter(
+    "irrigation_spark_quarantined_rows_total",
+    "Lignes mises en quarantaine, par regle qualite", ["rule"],
+)
+CLEAN_ROWS = PromCounter(
+    "irrigation_spark_clean_rows_total",
+    "Lignes ayant franchi les trois portes qualite",
+)
+DEVICE_MOISTURE = Gauge(
+    "irrigation_device_soil_moisture_pct",
+    "Derniere humidite du sol connue", ["device_id", "site_id"],
+)
+DEVICE_BATTERY = Gauge(
+    "irrigation_device_battery_volts",
+    "Derniere tension de batterie connue", ["device_id", "site_id"],
+)
+DEVICE_LAST_SEEN = Gauge(
+    "irrigation_device_last_reading_timestamp_seconds",
+    "Horodatage de la derniere mesure valide (epoch)", ["device_id", "site_id"],
+)
+
 STATE_FIELDS = ["site_id", "ts", "soil_moisture_pct", "soil_raw",
                 "air_temp_c", "air_humidity_pct", "battery_v", "fw_version"]
 
@@ -84,6 +131,13 @@ class ProgressLogger(StreamingQueryListener):
                       for so in (p.stateOperators or []))
         out = getattr(p.sink, "numOutputRows", -1)
         wm = (p.eventTime or {}).get("watermark", "-")
+        QUERY_INPUT_ROWS.labels(query=p.name).inc(p.numInputRows)
+        if out and out > 0:
+            QUERY_OUTPUT_ROWS.labels(query=p.name).inc(out)
+        if dropped:
+            WATERMARK_DROPPED.labels(query=p.name).inc(dropped)
+        BATCH_DURATION.labels(query=p.name).set(p.batchDuration / 1000.0)
+
         flag = "  <-- PERTE" if dropped else ""
         print(f"[{p.name}] input={p.numInputRows} output={out} "
               f"droppedByWatermark={dropped} watermark={wm}{flag}", flush=True)
@@ -271,6 +325,15 @@ def upsert_device_state(batch_df: DataFrame, batch_id: int) -> None:
         ops.append(UpdateOne({"_id": r["device_id"], "ts": {"$lt": r["ts"]}},
                              {"$set": doc}))
 
+    for r in rows:
+        labels = {"device_id": r["device_id"], "site_id": r["site_id"]}
+        if r["soil_moisture_pct"] is not None:
+            DEVICE_MOISTURE.labels(**labels).set(r["soil_moisture_pct"])
+        if r["battery_v"] is not None:
+            DEVICE_BATTERY.labels(**labels).set(r["battery_v"])
+        DEVICE_LAST_SEEN.labels(**labels).set(r["ts"].timestamp())
+    CLEAN_ROWS.inc(batch_df.count())
+
     result = _device_state_collection().bulk_write(ops, ordered=True)
     print(f"[device-state] batch={batch_id} devices={len(rows)} "
           f"upserted={result.upserted_count} modified={result.modified_count}",
@@ -306,15 +369,28 @@ def start_parquet_sink(df: DataFrame, name: str, path: str,
     )
 
 
+def count_quarantine(batch_df: DataFrame, batch_id: int) -> None:
+    """Compte les rejets par regle et alimente Prometheus.
+
+    On remplace l'ancien sink console en mode `complete` : celui-ci affichait
+    un cumul depuis le demarrage, ce qui ne se derive pas en taux. Un compteur
+    Prometheus, lui, se derive avec rate() sur la fenetre qu'on veut.
+    """
+    rows = batch_df.groupBy("quality_rule").count().collect()
+    if not rows:
+        return
+    for row in rows:
+        QUARANTINE.labels(rule=row["quality_rule"]).inc(row["count"])
+    detail = " ".join(f"{r['quality_rule']}={r['count']}" for r in rows)
+    print(f"[quality-monitor] batch={batch_id} {detail}", flush=True)
+
+
 def start_quality_monitor(df: DataFrame, ckpt: str):
-    """Compteur vivant des rejets par règle, affiché dans les logs."""
     return (
-        df.groupBy("quality_rule").count()
-        .writeStream
-        .format("console")
+        df.writeStream
         .queryName("quality-monitor")
-        .outputMode("complete")
-        .option("truncate", "false")
+        .outputMode("append")
+        .foreachBatch(count_quarantine)
         .option("checkpointLocation", f"{ckpt}/quality-monitor")
         .trigger(processingTime="30 seconds")
         .start()
@@ -325,6 +401,9 @@ def main() -> None:
     spark = build_session()
     spark.sparkContext.setLogLevel(os.getenv("SPARK_LOG_LEVEL", "WARN"))
     spark.streams.addListener(ProgressLogger())
+    start_http_server(int(os.getenv("METRICS_PORT", "8000")))
+    print(f"[metrics] Prometheus sur :{os.getenv('METRICS_PORT', '8000')}/metrics",
+          flush=True)
 
     data_dir = os.getenv("DATA_DIR", "/data").rstrip("/")
     ckpt = os.getenv("CHECKPOINT_DIR", "/checkpoints").rstrip("/")

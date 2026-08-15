@@ -22,10 +22,47 @@ from datetime import datetime
 
 import paho.mqtt.client as mqtt
 from confluent_kafka import KafkaException, Producer
+from prometheus_client import Counter as PromCounter
+from prometheus_client import Gauge, start_http_server
 
 LOG = logging.getLogger("bridge")
 
 REQUIRED_FIELDS = ("device_id", "site_id", "ts")
+
+# ---------------------------------------------------------------------------
+# Metriques Prometheus
+#
+# Convention : les compteurs (_total) ne font que croitre, les jauges donnent
+# une valeur instantanee. Prometheus calcule les taux lui-meme avec rate() --
+# c'est pourquoi on n'expose jamais un "messages par seconde" pre-calcule :
+# ce serait une moyenne figee sur une fenetre qu'on aurait choisie a sa place.
+# ---------------------------------------------------------------------------
+MESSAGES = PromCounter(
+    "irrigation_bridge_messages_total",
+    "Messages MQTT traites par le pont",
+    ["result"],                      # forwarded | dead_lettered
+)
+DEAD_LETTERS = PromCounter(
+    "irrigation_bridge_dead_letters_total",
+    "Messages rejetes vers la dead-letter queue, par famille de motif",
+    ["reason"],
+)
+DELIVERY_FAILURES = PromCounter(
+    "irrigation_bridge_delivery_failures_total",
+    "Echecs d'ecriture Kafka (le message MQTT n'est alors pas acquitte)",
+)
+BACKPRESSURE = PromCounter(
+    "irrigation_bridge_backpressure_total",
+    "Fois ou le tampon du producteur Kafka etait plein",
+)
+QUEUE_DEPTH = Gauge(
+    "irrigation_bridge_producer_queue_depth",
+    "Messages en attente d'ecriture dans le tampon du producteur",
+)
+MQTT_CONNECTED = Gauge(
+    "irrigation_bridge_mqtt_connected",
+    "1 si le pont est connecte au broker MQTT, 0 sinon",
+)
 
 
 def env(name: str, default: str | None = None, *, required: bool = False) -> str:
@@ -78,9 +115,11 @@ class Bridge:
             LOG.error("Connexion MQTT refusée : %s", reason_code)
             return
         client.subscribe(self.mqtt_topic, qos=1)
+        MQTT_CONNECTED.set(1)
         LOG.info("Connecté à MQTT, abonné à %s", self.mqtt_topic)
 
     def _on_disconnect(self, client, userdata, flags, reason_code, properties):
+        MQTT_CONNECTED.set(0)
         if self.running:
             LOG.warning("Déconnecté de MQTT (%s), reconnexion auto", reason_code)
 
@@ -110,6 +149,7 @@ class Bridge:
             key = str(record["device_id"]).encode()
             self._produce(self.topic_ok, key, raw, msg)
             self.stats["forwarded"] += 1
+            MESSAGES.labels(result="forwarded").inc()
         else:
             envelope = json.dumps({
                 "reason": reason,
@@ -121,6 +161,8 @@ class Bridge:
             self._produce(self.topic_dlq, str(key).encode() if key else None, envelope, msg)
             self.stats["dead_lettered"] += 1
             self.stats[f"dlq:{reason.split(':')[0]}"] += 1
+            MESSAGES.labels(result="dead_lettered").inc()
+            DEAD_LETTERS.labels(reason=reason.split(":")[0]).inc()
             LOG.warning("DLQ (%s) depuis %s", reason, msg.topic)
 
     # -- Kafka ------------------------------------------------------------
@@ -129,6 +171,7 @@ class Bridge:
         def on_delivery(err, _kafka_msg, _mid=mqtt_msg.mid, _qos=mqtt_msg.qos):
             if err is not None:
                 self.stats["delivery_failed"] += 1
+                DELIVERY_FAILURES.inc()
                 LOG.error("Échec d'écriture Kafka : %s (pas d'ACK MQTT)", err)
                 return
             self.client.ack(_mid, _qos)
@@ -140,6 +183,7 @@ class Bridge:
                 return
             except BufferError:
                 self.stats["backpressure"] += 1
+                BACKPRESSURE.inc()
                 self.producer.poll(0.5)
             except KafkaException as exc:
                 LOG.error("Erreur producteur Kafka : %s", exc)
@@ -148,9 +192,15 @@ class Bridge:
     def _poll_loop(self) -> None:
         while self.running:
             self.producer.poll(0.2)
+            QUEUE_DEPTH.set(len(self.producer))
 
     # -- Cycle de vie -----------------------------------------------------
     def run(self) -> int:
+        # Serveur HTTP dedie aux metriques, dans un thread separe : il doit
+        # repondre meme si la boucle principale est bloquee.
+        start_http_server(int(os.getenv("METRICS_PORT", "8000")))
+        LOG.info("Metriques Prometheus sur :%s/metrics",
+                 os.getenv("METRICS_PORT", "8000"))
         threading.Thread(target=self._poll_loop, daemon=True).start()
         self.client.connect(self.mqtt_host, self.mqtt_port, keepalive=30)
         self.client.loop_start()

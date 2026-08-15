@@ -12,7 +12,7 @@ ARG POOL_V=2.11.1
 ARG HADOOP_V=3.3.4
 ARG AWS_SDK_V=1.12.262
 
-RUN pip install --no-cache-dir "pyspark==${SPARK_V}" "pymongo>=4.8,<5"
+RUN pip install --no-cache-dir "pyspark==${SPARK_V}" "pymongo>=4.8,<5" "prometheus-client>=0.21,<1"
 
 # Connecteur Kafka figé dans l'image : pas de résolution Maven au démarrage.
 ENV SPARK_JARS=/usr/local/lib/python3.12/site-packages/pyspark/jars

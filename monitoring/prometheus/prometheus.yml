@@ -1,0 +1,31 @@
+# Prometheus fonctionne en "pull" : c'est lui qui vient chercher les metriques
+# sur chaque cible, pas l'inverse. Consequence pratique : un service qui tombe
+# devient une cible "down" visible, alors qu'en mode "push" il disparaitrait
+# simplement du tableau de bord sans que personne ne le remarque.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    platform: smart-irrigation
+
+scrape_configs:
+  - job_name: bridge
+    static_configs:
+      - targets: ["bridge:8000"]
+        labels:
+          component: ingestion
+
+  - job_name: spark
+    static_configs:
+      - targets: ["spark-streaming:8000"]
+        labels:
+          component: streaming
+
+  # Prometheus se surveille lui-meme : si ce job disparait des graphiques,
+  # c'est la supervision elle-meme qui est tombee.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+        labels:
+          component: monitoring

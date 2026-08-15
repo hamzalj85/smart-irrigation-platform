@@ -111,6 +111,8 @@ services:
     build: ./ingestion/bridge
     container_name: irrigation-bridge
     restart: unless-stopped
+    ports:
+      - "8000:8000"        # metriques Prometheus
     depends_on:
       mosquitto:
         condition: service_started
@@ -131,7 +133,8 @@ services:
     build: ./streaming/spark
     container_name: irrigation-spark
     ports:
-      - "4040:4040"
+      - "4040:4040"        # interface Spark
+      - "8001:8000"        # metriques Prometheus
     restart: on-failure:3
     depends_on:
       kafka:
@@ -235,6 +238,24 @@ services:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------
+  # Supervision
+  # ---------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v3.13.2
+    container_name: irrigation-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  # ---------------------------------------------------------------------------
   # Orchestration : Airflow 3 (LocalExecutor, metadonnees dans Postgres)
   # ---------------------------------------------------------------------------
   airflow-postgres:
@@ -322,3 +343,4 @@ volumes:
   minio_data:
   airflow_db:
   airflow_logs:
+  prometheus_data:
