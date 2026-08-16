@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Une execution en cours sur la meme branche est annulee quand on repousse.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install ruff==0.16.2
+      - name: ruff check
+        run: ruff check --output-format=github .
+      - name: ruff format --check
+        run: ruff format --check .
+        continue-on-error: true   # informatif tant que le formatage n'est pas impose
+
+  test:
+    name: Tests unitaires
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      # PySpark a besoin d'une JVM ; les runners GitHub en fournissent une.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Installer les dependances
+        # requirements-dev.txt suffit : la logique testee ne depend pas des
+        # clients Kafka/MQTT. Seul PySpark s'ajoute, pour les portes qualite.
+        run: |
+          pip install -r requirements-dev.txt
+          pip install "pyspark==3.5.3"
+      - name: pytest
+        # Le marqueur `integration` demande la stack Docker : exclu ici.
+        run: pytest -m "not integration" --junitxml=junit.xml
+        env:
+          SPARK_LOCAL_IP: 127.0.0.1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit
+          path: junit.xml
+
+  dbt:
+    name: dbt parse
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install "dbt-core==1.9.10" "dbt-duckdb==1.9.6"
+      - name: dbt parse
+        # `parse` compile les modeles et resout le graphe de dependances sans
+        # se connecter a MinIO : une erreur de Jinja ou une reference cassee
+        # est donc detectee ici, sans infrastructure.
+        working-directory: transforms/dbt
+        run: dbt parse
+        env:
+          DBT_PROFILES_DIR: .
+          MINIO_ROOT_USER: ci
+          MINIO_ROOT_PASSWORD: ci
+          MINIO_BUCKET: irrigation
+          S3_ENDPOINT_HOST: localhost:9000
+
+  compose:
+    name: docker compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Valider le fichier compose
+        # Detecte une ancre YAML cassee ou une variable non definie avant
+        # qu'elle ne casse le demarrage chez quelqu'un qui clone.
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+          echo "docker-compose.yml valide"

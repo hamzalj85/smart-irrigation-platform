@@ -37,4 +37,10 @@ select = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["ml", "ingestion/simulator", "streaming/spark"]
+# Les modules testes ne sont pas un paquet installe : on les rend importables.
+pythonpath = ["ml", "ingestion/simulator", "ingestion/bridge", "streaming/spark"]
+addopts = "-q --strict-markers"
+markers = [
+    "spark: demande PySpark et une JVM (plus lent)",
+    "integration: demande la stack Docker complete, exclu par defaut",
+]

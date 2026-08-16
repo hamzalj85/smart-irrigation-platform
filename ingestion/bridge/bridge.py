@@ -24,10 +24,9 @@ import paho.mqtt.client as mqtt
 from confluent_kafka import KafkaException, Producer
 from prometheus_client import Counter as PromCounter
 from prometheus_client import Gauge, start_http_server
+from validation import validate_payload
 
 LOG = logging.getLogger("bridge")
-
-REQUIRED_FIELDS = ("device_id", "site_id", "ts")
 
 # ---------------------------------------------------------------------------
 # Metriques Prometheus
@@ -126,24 +125,7 @@ class Bridge:
     def _on_message(self, client, userdata, msg: mqtt.MQTTMessage) -> None:
         self.stats["received"] += 1
         raw = msg.payload
-        reason = None
-        record = None
-
-        try:
-            record = json.loads(raw)
-            if not isinstance(record, dict):
-                reason = "not_an_object"
-            else:
-                missing = [f for f in REQUIRED_FIELDS if record.get(f) in (None, "")]
-                if missing:
-                    reason = f"missing_fields:{','.join(missing)}"
-                else:
-                    try:
-                        datetime.fromisoformat(str(record["ts"]).replace("Z", "+00:00"))
-                    except ValueError:
-                        reason = "unparseable_ts"
-        except json.JSONDecodeError as exc:
-            reason = f"invalid_json:{exc.msg}"
+        record, reason = validate_payload(raw)
 
         if reason is None:
             key = str(record["device_id"]).encode()

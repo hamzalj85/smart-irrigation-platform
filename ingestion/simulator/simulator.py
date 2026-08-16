@@ -31,6 +31,26 @@ ADC_WET = 1200   # sol saturé
 FW_VERSION = "1.0.0"
 
 
+def moisture_to_raw(moisture_pct: float) -> int:
+    """Convertit un pourcentage d'humidite en valeur brute de l'ADC.
+
+    C'est la calibration du capteur resistif, inversee : plus le sol est
+    humide, moins il resiste, plus la tension lue est basse. Sol sec -> 3200,
+    sol sature -> 1200.
+    """
+    return int(ADC_DRY - (moisture_pct / 100.0) * (ADC_DRY - ADC_WET))
+
+
+def raw_to_moisture(raw: int) -> float:
+    """Inverse de `moisture_to_raw` : c'est ce que ferait le firmware.
+
+    Les deux fonctions doivent etre exactement reciproques ; un test le
+    verifie. Une calibration qui ne se retourne pas est un bug silencieux
+    dont on ne s'apercoit qu'en comparant a une mesure de reference.
+    """
+    return (ADC_DRY - raw) / (ADC_DRY - ADC_WET) * 100.0
+
+
 # --------------------------------------------------------------------------
 # Modèle physique
 # --------------------------------------------------------------------------
@@ -88,7 +108,7 @@ class Device:
     def reading(self, now: datetime, rng: random.Random) -> dict:
         """Produit le JSON tel que le firmware l'émettrait."""
         measured = self.moisture + self.calibration_bias
-        raw = int(ADC_DRY - (measured / 100.0) * (ADC_DRY - ADC_WET))
+        raw = moisture_to_raw(measured)
 
         # Cycle jour/nuit : pic de température vers 15h, minimum vers 3h.
         hour = now.hour + now.minute / 60.0

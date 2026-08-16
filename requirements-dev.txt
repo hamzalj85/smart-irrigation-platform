@@ -1,9 +1,20 @@
+# Outillage de developpement et de CI (pas les dependances d'execution :
+# celles-ci vivent dans le requirements.txt de chaque composant).
+ruff==0.16.2
+pytest>=8.0,<9
+
+# Necessaires seulement pour *importer* les modules testes
+paho-mqtt>=2.1.0
+prometheus-client>=0.21,<1
+
+# Analyse et modelisation
+duckdb>=1.0,<2
+pandas>=2.2,<3
+pyarrow>=17
+scikit-learn>=1.5,<2
+joblib>=1.4,<2
+boto3>=1.34,<2
+
+# Transformations
 dbt-core==1.9.10
 dbt-duckdb==1.9.6
-duckdb
-ruff
-pytest
-scikit-learn
-joblib
-pandas
-boto3
