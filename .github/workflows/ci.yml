@@ -25,11 +25,11 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install ruff==0.16.2
+      # On utilise le *linter* de ruff, pas son *formateur* : certains
+      # alignements (colonnes du schema, tables de constantes) sont
+      # volontaires et un formateur automatique les detruirait.
       - name: ruff check
         run: ruff check --output-format=github .
-      - name: ruff format --check
-        run: ruff format --check .
-        continue-on-error: true   # informatif tant que le formatage n'est pas impose
 
   test:
     name: Tests unitaires
