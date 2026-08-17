@@ -425,6 +425,47 @@ produces a flattering score and a useless model.
 
 ---
 
+## Troubleshooting
+
+Four failure modes worth knowing, all encountered while building this.
+
+**`SignatureDoesNotMatch` / HTTP 403 when reading from MinIO.** The root
+credentials of a stateful service are frozen when its volume is first created.
+Changing `MINIO_ROOT_PASSWORD` in `.env` afterwards has no effect — the same is
+true for MongoDB and Postgres. Recreate the volume:
+
+```bash
+docker compose down -v && docker compose up -d
+```
+
+**Port already allocated, or a container answering with the wrong data.**
+Only one instance of this stack can run at a time; the ports are fixed. Check
+who owns them before assuming a bug:
+
+```bash
+docker ps --format "{{.Names}}\t{{.Ports}}"
+```
+
+**A streaming query reports `input=0` forever while data is clearly flowing.**
+Kafka offsets, the `_spark_metadata` directory and the state store describe one
+transactional state. Recreating a topic without clearing the checkpoint leaves
+the query waiting for offsets that will never come. Reset both together:
+
+```powershell
+.\scripts\reset-all.ps1
+```
+
+**Spark tests fail with `getSubject is supported only if a security manager is
+allowed`.** Spark 3.5 supports Java 8, 11 and 17; recent JDKs removed the
+security manager it relies on. Either point `JAVA_HOME` at a JDK 17, or run
+those tests inside the streaming image, which already has the right one:
+
+```powershell
+.\scripts\test-spark.ps1
+```
+
+---
+
 ## Repository layout
 
 ```
