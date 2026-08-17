@@ -294,6 +294,8 @@ Four minutes, six simulated devices, 20 % injected fault rate:
 
 ## Orchestration
 
+![Airflow](docs/media/airflow-grid.png)
+
 Three Airflow DAGs:
 
 | DAG | Schedule | What it does |
@@ -318,6 +320,8 @@ A single source cannot make that distinction.
 ## Transformations
 
 dbt on DuckDB, reading the Parquet files directly from MinIO — no copy, no load.
+
+![dbt lineage](docs/media/dbt-lineage.png)
 
 ```
 lake.telemetry ──► stg_telemetry ──┬──► fct_readings_hourly
@@ -372,6 +376,12 @@ that always answers "no" would score 90 %. Promotion is decided on F1.
 Every run writes a versioned artefact and a `metrics.json` to MinIO, recording
 dataset size, class balance in both splits, exact periods, split method and git
 revision.
+
+The nightly DAG then decides whether to promote. Here it refused — the candidate
+scored exactly what production already scored, so nothing was replaced, and the
+run still succeeded:
+
+![Conditional promotion](docs/media/model-promotion.png)
 
 ---
 
