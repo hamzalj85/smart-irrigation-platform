@@ -167,12 +167,47 @@ docker compose logs -f spark-streaming   # wait for 4 "[listener] query started"
 
 First run pulls and builds around 4 GB of images — allow ten minutes.
 
-Feed it data:
+### 5. Feed it data
+
+The pipeline runs in Docker, but the sensor simulator runs on your machine — it
+stands in for devices that would be out in a field. It needs its own Python
+environment:
 
 ```powershell
-. .\scripts\load-env.ps1
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r ingestion\simulator\requirements.txt
+
+. .\scripts\load-env.ps1     # loads .env into the session (note the leading dot)
 python ingestion\simulator\simulator.py --sensors 6 --interval 2s --fault-rate 0.15 --speed 120
 ```
+
+```bash
+# macOS / Linux
+python -m venv .venv && source .venv/bin/activate
+pip install -r ingestion/simulator/requirements.txt
+set -a && source .env && set +a
+python ingestion/simulator/simulator.py --sensors 6 --interval 2s --fault-rate 0.15 --speed 120
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--sensors N` | number of simulated devices, each with its own drift |
+| `--fault-rate` | fraction of readings made faulty on purpose |
+| `--offline-rate` | chance a device goes silent for a few cycles |
+| `--speed` | accelerates the soil model so a full irrigation cycle takes minutes instead of hours |
+| `--seed` | fixes the randomness, for reproducible runs |
+
+Leave it running for two or three minutes, then open Grafana.
+
+For the analysis tools (`scripts/inspect_data.py`, dbt, the model) install the
+wider set instead:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+### 6. Look at it
 
 | Service | URL | Notes |
 | --- | --- | --- |
