@@ -53,3 +53,5 @@ transforms/dbt/.user.yml
 
 # notes locales
 readme_notes.txt
+# journaux exportes a la main
+logs.txt
