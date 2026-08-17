@@ -1,3 +1,8 @@
+# Aucun `container_name:` n'est fixe : Compose derive les noms du repertoire
+# du projet. Deux clones du depot peuvent donc coexister, et personne n'entre
+# en collision avec un autre projet. Les commandes `docker compose exec|logs`
+# utilisent le nom de SERVICE, elles ne sont pas affectees.
+#
 # Configuration partagee par les cinq conteneurs Airflow.
 # Une ancre YAML (&) definie ici, referencee plus bas par <<: *airflow-common.
 x-airflow-common: &airflow-common
@@ -37,7 +42,6 @@ x-airflow-common: &airflow-common
 services:
   mosquitto:
     image: eclipse-mosquitto:2.0
-    container_name: irrigation-mosquitto
     restart: unless-stopped
     ports:
       - "1883:1883"
@@ -48,7 +52,6 @@ services:
       - mosquitto_log:/mosquitto/log
   kafka:
     image: apache/kafka:3.9.0
-    container_name: irrigation-kafka
     restart: unless-stopped
     ports:
       - "9092:9092"
@@ -79,7 +82,6 @@ services:
 
   kafka-init:
     image: apache/kafka:3.9.0
-    container_name: irrigation-kafka-init
     depends_on:
       kafka:
         condition: service_healthy
@@ -95,7 +97,6 @@ services:
 
   kafka-ui:
     image: provectuslabs/kafka-ui:v0.7.2
-    container_name: irrigation-kafka-ui
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -109,7 +110,6 @@ services:
 
   bridge:
     build: ./ingestion/bridge
-    container_name: irrigation-bridge
     restart: unless-stopped
     ports:
       - "8000:8000"        # metriques Prometheus
@@ -131,7 +131,6 @@ services:
 
   spark-streaming:
     build: ./streaming/spark
-    container_name: irrigation-spark
     ports:
       - "4040:4040"        # interface Spark
       - "8001:8000"        # metriques Prometheus
@@ -166,7 +165,6 @@ services:
 
   minio:
     image: minio/minio:latest      # TODO Phase 11 : épingler (voir plus bas)
-    container_name: irrigation-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     ports:
@@ -186,7 +184,6 @@ services:
 
   minio-init:
     image: minio/mc:latest
-    container_name: irrigation-minio-init
     depends_on:
       minio:
         condition: service_healthy
@@ -207,7 +204,6 @@ services:
 
   mongodb:
     image: mongo:7
-    container_name: irrigation-mongo
     restart: unless-stopped
     ports:
       - "27017:27017"
@@ -226,7 +222,6 @@ services:
 
   mongo-express:
     image: mongo-express:1.0.2
-    container_name: irrigation-mongo-express
     restart: unless-stopped
     ports:
       - "8081:8081"
@@ -242,7 +237,6 @@ services:
   # ---------------------------------------------------------------------------
   prometheus:
     image: prom/prometheus:v3.13.2
-    container_name: irrigation-prometheus
     restart: unless-stopped
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -257,7 +251,6 @@ services:
 
   grafana:
     image: grafana/grafana:12.4.8
-    container_name: irrigation-grafana
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -282,7 +275,6 @@ services:
   # ---------------------------------------------------------------------------
   airflow-postgres:
     image: postgres:16
-    container_name: irrigation-airflow-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: airflow
@@ -299,7 +291,6 @@ services:
 
   airflow-init:
     <<: *airflow-common
-    container_name: irrigation-airflow-init
     restart: "no"
     depends_on:
       airflow-postgres:
@@ -314,7 +305,6 @@ services:
 
   airflow-apiserver:
     <<: *airflow-common
-    container_name: irrigation-airflow-api
     restart: unless-stopped
     depends_on:
       airflow-init:
@@ -331,7 +321,6 @@ services:
 
   airflow-scheduler:
     <<: *airflow-common
-    container_name: irrigation-airflow-scheduler
     restart: unless-stopped
     depends_on:
       airflow-init:
@@ -340,7 +329,6 @@ services:
 
   airflow-dag-processor:
     <<: *airflow-common
-    container_name: irrigation-airflow-dag-processor
     restart: unless-stopped
     depends_on:
       airflow-init:
@@ -349,7 +337,6 @@ services:
 
   airflow-triggerer:
     <<: *airflow-common
-    container_name: irrigation-airflow-triggerer
     restart: unless-stopped
     depends_on:
       airflow-init:

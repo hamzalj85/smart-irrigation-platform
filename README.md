@@ -17,6 +17,8 @@ Everything runs locally with `docker compose up`.
 > version focuses on the **data engineering** — delivery guarantees, data
 > quality, reproducibility and operability.
 
+![Live dashboard](docs/media/dashboard.gif)
+
 ---
 
 ## Architecture
@@ -114,27 +116,56 @@ working system with no manual clicking.
 
 ## Quick start
 
-**Requirements:** Docker Desktop, Git, Python 3.11+.
+**Requirements:** Docker Desktop, Git, Python 3.11+. The stack binds ports 1883,
+3000, 4040, 8000–8082, 9000, 9001, 9090 and 27017 — stop anything already using
+them, including another copy of this project.
+
+### 1. Clone
 
 ```bash
 git clone https://github.com/hamzalj85/smart-irrigation-platform.git
 cd smart-irrigation-platform
-
-cp .env.example .env          # then edit: replace every "changeme"
+cp .env.example .env
 ```
 
-Generate the Mosquitto password file from `.env` (single source of truth):
+### 2. Fill in the secrets — not optional
+
+`.env` ships with `changeme` placeholders. **Nothing will start until they are
+replaced**: the bootstrap scripts refuse placeholder values on purpose.
+
+Generate one password per entry:
 
 ```powershell
-.\scripts\init-mosquitto-passwd.ps1     # Windows
+# Windows: run once per secret, paste the result into .env
+-join ((48..57)+(65..90)+(97..122) | Get-Random -Count 24 | % {[char]$_})
 ```
 
-Start everything:
+```bash
+# macOS / Linux
+openssl rand -base64 18
+```
+
+Six values to replace: `MOSQUITTO_ESP32_PASSWORD`, `MOSQUITTO_BRIDGE_PASSWORD`,
+`MINIO_ROOT_PASSWORD`, `MONGO_INITDB_ROOT_PASSWORD`, `AIRFLOW_DB_PASSWORD`,
+`AIRFLOW_JWT_SECRET`, plus `GRAFANA_ADMIN_PASSWORD`.
+
+### 3. Generate the Mosquitto password file
+
+Mosquitto stores hashed passwords in a file that is git-ignored. This script
+builds it from `.env`, which stays the single source of truth:
+
+```powershell
+.\scripts\init-mosquitto-passwd.ps1
+```
+
+### 4. Start
 
 ```bash
 docker compose up -d
 docker compose logs -f spark-streaming   # wait for 4 "[listener] query started"
 ```
+
+First run pulls and builds around 4 GB of images — allow ten minutes.
 
 Feed it data:
 

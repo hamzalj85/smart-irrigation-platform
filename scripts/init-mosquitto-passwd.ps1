@@ -22,8 +22,16 @@ $accounts = @(
 )
 
 foreach ($a in $accounts) {
-    if (-not $a.User -or -not $a.Pass -or $a.Pass -eq 'changeme') {
-        throw "Compte incomplet dans .env : '$($a.User)'"
+    if (-not $a.User) {
+        throw "Utilisateur manquant dans .env (MOSQUITTO_*_USER)."
+    }
+    if (-not $a.Pass -or $a.Pass -eq 'changeme') {
+        throw @"
+Le mot de passe du compte '$($a.User)' vaut encore 'changeme' dans .env.
+
+Genere-en un et colle-le dans .env avant de relancer :
+  -join ((48..57)+(65..90)+(97..122) | Get-Random -Count 24 | % {[char]`$_})
+"@
     }
 }
 
