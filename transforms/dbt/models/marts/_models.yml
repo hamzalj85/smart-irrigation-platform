@@ -2,14 +2,14 @@ version: 2
 
 models:
   - name: fct_readings_hourly
-    description: Agregats horaires par appareil. Grain = (device_id, hour_start).
+    description: Hourly aggregates per device. Grain = (device_id, hour_start).
     columns:
       - name: device_id
         tests: [not_null]
       - name: hour_start
         tests: [not_null]
       - name: reading_count
-        description: Nombre de mesures valides dans l'heure.
+        description: Number of valid readings within the hour.
         tests:
           - not_null
           - accepted_range: {min_value: 1, max_value: 100000}
@@ -18,7 +18,7 @@ models:
           - accepted_range: {min_value: 0, max_value: 100}
 
   - name: dim_devices
-    description: Un enregistrement par appareil , etat, anciennete, sante batterie.
+    description: One record per device — current state, age and battery health.
     columns:
       - name: device_id
         tests: [not_null, unique]

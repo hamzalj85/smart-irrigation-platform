@@ -1,13 +1,13 @@
-# Outillage de developpement et de CI (pas les dependances d'execution :
-# celles-ci vivent dans le requirements.txt de chaque composant).
+# Development and CI tooling (not the runtime dependencies: those live in the
+# requirements.txt of each component).
 ruff==0.16.2
 pytest>=8.0,<9
 
-# Necessaires seulement pour *importer* les modules testes
+# Needed only to *import* the modules under test
 paho-mqtt>=2.1.0
 prometheus-client>=0.21,<1
 
-# Analyse et modelisation
+# Analysis and modelling
 duckdb>=1.0,<2
 pandas>=2.2,<3
 pyarrow>=17

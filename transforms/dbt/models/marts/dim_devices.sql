@@ -1,5 +1,5 @@
--- Dimension : une ligne par appareil, son etat et son historique.
--- Alimente la supervision de parc et les jointures analytiques.
+-- Dimension: one row per device, with its state and its history.
+-- Feeds the fleet monitoring table and the analytical joins.
 
 with readings as (
 

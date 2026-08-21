@@ -1,10 +1,10 @@
-"""Les trois portes qualite de la couche streaming.
+"""The three quality gates of the streaming layer.
 
-Ces tests demandent PySpark et une JVM, mais **pas** Kafka, ni MinIO, ni
-MongoDB : `apply_quality_gates` prend un DataFrame et en rend un autre. Le
-job de streaming n'est qu'un cablage autour de cette fonction pure.
+These tests need PySpark and a JVM, but **not** Kafka, MinIO or MongoDB:
+`apply_quality_gates` takes a DataFrame and returns another one. The streaming
+job is only wiring around that pure function.
 
-Marque `spark` : `pytest -m "not spark"` les exclut sur une machine sans JVM.
+Marked `spark`: `pytest -m "not spark"` excludes them on a machine with no JVM.
 """
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import datetime as dt
 
 import pytest
 
-pytest.importorskip("pyspark", reason="PySpark absent")
+pytest.importorskip("pyspark", reason="PySpark is not installed")
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
@@ -41,10 +41,10 @@ def spark():
 
 
 def kafka_frame(spark, payloads, ingested_at=None):
-    """Imite la forme d'un DataFrame lu depuis le connecteur Kafka."""
+    """Mimics the shape of a DataFrame read from the Kafka connector."""
     ingested_at = ingested_at or dt.datetime(2026, 8, 10, 12, 0, tzinfo=dt.UTC)
     rows = [(name, text) for name, text in payloads]
-    return (spark.createDataFrame(rows, "cas string, value string")
+    return (spark.createDataFrame(rows, "case string, value string")
             .withColumn("key", F.lit("k").cast("binary"))
             .withColumn("partition", F.lit(0))
             .withColumn("offset", F.lit(0).cast("long"))
@@ -53,7 +53,7 @@ def kafka_frame(spark, payloads, ingested_at=None):
 
 
 def verdicts(spark, payloads, ingested_at=None) -> dict[str, str | None]:
-    """Rend {libelle du cas: motif de rejet}, une passe par cas."""
+    """Returns {case label: rejection reason}, one pass per case."""
     out: dict[str, str | None] = {}
     for name, text in payloads:
         frame = kafka_frame(spark, [(name, text)], ingested_at)
@@ -75,75 +75,75 @@ def message(**overrides) -> str:
     return json.dumps({k: v for k, v in base.items() if v is not ...})
 
 
-def test_message_valide(spark):
+def test_a_valid_message(spark):
     assert verdicts(spark, [("ok", message())])["ok"] is None
 
 
-def test_porte_completude(spark):
-    cas = verdicts(spark, [
-        ("moisture_nul", message(soil_moisture_pct=None)),
-        ("sans_ts", message(ts=...)),
+def test_completeness_gate(spark):
+    cases = verdicts(spark, [
+        ("null_moisture", message(soil_moisture_pct=None)),
+        ("no_ts", message(ts=...)),
     ])
-    assert cas["moisture_nul"] == "completeness:soil_moisture_pct"
-    assert cas["sans_ts"].startswith("completeness:")
+    assert cases["null_moisture"] == "completeness:soil_moisture_pct"
+    assert cases["no_ts"].startswith("completeness:")
 
 
-@pytest.mark.parametrize(("champ", "valeur"), [
+@pytest.mark.parametrize(("field", "value"), [
     ("soil_moisture_pct", 148.0),
     ("soil_moisture_pct", -12.4),
     ("air_temp_c", -273.0),
     ("air_humidity_pct", 120.0),
-    ("soil_raw", 5000),          # au-dela des 12 bits de l'ADC
+    ("soil_raw", 5000),          # beyond the 12 bits of the ADC
     ("battery_v", 9.9),
 ])
-def test_porte_bornes(spark, champ, valeur):
-    reason = verdicts(spark, [("x", message(**{champ: valeur}))])["x"]
-    assert reason == f"range:{champ}"
+def test_range_gate(spark, field, value):
+    reason = verdicts(spark, [("x", message(**{field: value}))])["x"]
+    assert reason == f"range:{field}"
 
 
-def test_porte_plausibilite_horodatage_trop_vieux(spark):
-    vieux = (dt.datetime(2026, 8, 10, 12, 0, tzinfo=dt.UTC)
-             - dt.timedelta(hours=MAX_LATE_HOURS + 2))
-    reason = verdicts(spark, [("x", message(ts=vieux.isoformat()))])["x"]
+def test_plausibility_gate_timestamp_too_old(spark):
+    old = (dt.datetime(2026, 8, 10, 12, 0, tzinfo=dt.UTC)
+           - dt.timedelta(hours=MAX_LATE_HOURS + 2))
+    reason = verdicts(spark, [("x", message(ts=old.isoformat()))])["x"]
     assert reason == "plausibility:stale_ts"
 
 
-def test_porte_plausibilite_horodatage_dans_le_futur(spark):
-    futur = (dt.datetime(2026, 8, 10, 12, 0, tzinfo=dt.UTC)
-             + dt.timedelta(hours=2))
-    reason = verdicts(spark, [("x", message(ts=futur.isoformat()))])["x"]
+def test_plausibility_gate_timestamp_in_the_future(spark):
+    future = (dt.datetime(2026, 8, 10, 12, 0, tzinfo=dt.UTC)
+              + dt.timedelta(hours=2))
+    reason = verdicts(spark, [("x", message(ts=future.isoformat()))])["x"]
     assert reason == "plausibility:future_ts"
 
 
-def test_payload_illisible(spark):
-    assert verdicts(spark, [("x", "ceci n'est pas du json")])["x"] == \
+def test_unreadable_payload(spark):
+    assert verdicts(spark, [("x", "this is not json at all")])["x"] == \
         "unparseable_payload"
 
 
-def test_le_verdict_est_deterministe(spark):
-    """Meme donnee, meme heure d'ingestion, meme verdict -- toujours.
+def test_the_verdict_is_deterministic(spark):
+    """Same data, same ingestion time, same verdict -- always.
 
-    La plausibilite est ancree sur `kafka_ts`, pas sur l'horloge murale.
-    Rejouer un historique un mois plus tard doit donner exactement les memes
-    rejets, sinon le pipeline n'est pas rejouable.
+    Plausibility is anchored on `kafka_ts`, never on the wall clock. Replaying
+    a history one month later must produce exactly the same rejections,
+    otherwise the pipeline is not replayable.
     """
-    vieux = dt.datetime(2024, 1, 1, 8, 0, tzinfo=dt.UTC)
-    payload = message(ts=vieux.isoformat())
-    ingestion = vieux + dt.timedelta(minutes=1)
+    old = dt.datetime(2024, 1, 1, 8, 0, tzinfo=dt.UTC)
+    payload = message(ts=old.isoformat())
+    ingestion = old + dt.timedelta(minutes=1)
     assert verdicts(spark, [("x", payload)], ingestion)["x"] is None
 
 
-def test_la_premiere_regle_qui_echoue_l_emporte(spark):
-    """Ordre : completude, puis bornes, puis plausibilite."""
+def test_the_first_failing_rule_wins(spark):
+    """Order: completeness, then range, then plausibility."""
     reason = verdicts(spark, [("x", message(soil_moisture_pct=None,
                                             air_temp_c=999.0))])["x"]
     assert reason == "completeness:soil_moisture_pct"
 
 
-def test_le_schema_est_declare_et_non_infere():
-    """Le contrat de donnees est explicite : neuf colonnes typees."""
+def test_the_schema_is_declared_not_inferred():
+    """The data contract is explicit: nine typed columns."""
     assert len(TELEMETRY_SCHEMA.fields) == 9
     types = {f.name: f.dataType.simpleString() for f in TELEMETRY_SCHEMA.fields}
     assert types["soil_moisture_pct"] == "double"
     assert types["soil_raw"] == "int"
-    assert types["ts"] == "string"   # converti ensuite, pour maitriser l'echec
+    assert types["ts"] == "string"   # converted later, to control the failure

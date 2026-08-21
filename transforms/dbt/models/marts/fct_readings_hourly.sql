@@ -1,5 +1,5 @@
--- Table de faits : une ligne par appareil et par heure.
--- C'est la granularite que consomment Grafana et le modele ML.
+-- Fact table: one row per device and per hour.
+-- This is the grain consumed by Grafana and by the ML model.
 
 with readings as (
 

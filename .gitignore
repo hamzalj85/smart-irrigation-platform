@@ -18,22 +18,26 @@ __pycache__/
 .ruff_cache/
 *.egg-info/
 
-# ---- Données & artefacts ----
+# ---- Data and artefacts ----
 data/
 *.parquet
 *.duckdb
 models/*.pkl
 mlruns/
 
-# ---- Docker / volumes locaux ----
+# ---- Docker / local volumes ----
 infra/mosquitto/data/
 infra/mosquitto/log/
 volumes/
 
 # ---- dbt ----
+# dbt also creates a logs/ directory at the repository root, not only in
+# transforms/dbt, which is why logs/ is ignored globally below.
 transforms/dbt/target/
 transforms/dbt/dbt_packages/
 transforms/dbt/logs/
+transforms/dbt/.user.yml
+logs/
 
 # ---- Airflow ----
 orchestration/airflow/logs/
@@ -41,17 +45,12 @@ airflow.db
 airflow.cfg
 webserver_config.py
 
-# ---- OS / éditeur ----
+# ---- OS / editor ----
 .DS_Store
 Thumbs.db
 .vscode/settings.json
 .idea/
 
-# dbt (le repertoire logs/ est cree a la racine quand on lance dbt d'ailleurs)
-logs/
-transforms/dbt/.user.yml
-
-# notes locales
+# ---- Local scratch files ----
 readme_notes.txt
-# journaux exportes a la main
 logs.txt

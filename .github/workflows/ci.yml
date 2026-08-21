@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
 
-# Une execution en cours sur la meme branche est annulee quand on repousse.
+# A run already in flight on the same branch is cancelled when we push again.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -25,14 +25,14 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install ruff==0.16.2
-      # On utilise le *linter* de ruff, pas son *formateur* : certains
-      # alignements (colonnes du schema, tables de constantes) sont
-      # volontaires et un formateur automatique les detruirait.
+      # We run ruff's *linter*, not its *formatter*: some alignments (the schema
+      # columns, the constant tables) are deliberate and an automatic formatter
+      # would destroy them.
       - name: ruff check
         run: ruff check --output-format=github .
 
   test:
-    name: Tests unitaires
+    name: Unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,19 +40,20 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      # PySpark a besoin d'une JVM ; les runners GitHub en fournissent une.
+      # PySpark needs a JVM; GitHub runners provide one.
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-      - name: Installer les dependances
-        # requirements-dev.txt suffit : la logique testee ne depend pas des
-        # clients Kafka/MQTT. Seul PySpark s'ajoute, pour les portes qualite.
+      - name: Install dependencies
+        # requirements-dev.txt is enough: the logic under test does not depend
+        # on the Kafka or MQTT clients. Only PySpark is added, for the quality
+        # gates.
         run: |
           pip install -r requirements-dev.txt
           pip install "pyspark==3.5.3"
       - name: pytest
-        # Le marqueur `integration` demande la stack Docker : exclu ici.
+        # The `integration` marker requires the Docker stack: excluded here.
         run: pytest -m "not integration" --junitxml=junit.xml
         env:
           SPARK_LOCAL_IP: 127.0.0.1
@@ -73,9 +74,9 @@ jobs:
           cache: pip
       - run: pip install "dbt-core==1.9.10" "dbt-duckdb==1.9.6"
       - name: dbt parse
-        # `parse` compile les modeles et resout le graphe de dependances sans
-        # se connecter a MinIO : une erreur de Jinja ou une reference cassee
-        # est donc detectee ici, sans infrastructure.
+        # `parse` compiles the models and resolves the dependency graph without
+        # connecting to MinIO: a Jinja error or a broken ref is caught here,
+        # with no infrastructure at all.
         working-directory: transforms/dbt
         run: dbt parse
         env:
@@ -90,10 +91,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Valider le fichier compose
-        # Detecte une ancre YAML cassee ou une variable non definie avant
-        # qu'elle ne casse le demarrage chez quelqu'un qui clone.
+      - name: Validate the compose file
+        # Catches a broken YAML anchor or an undefined variable before it
+        # breaks the startup of someone who just cloned the repository.
         run: |
           cp .env.example .env
           docker compose config --quiet
-          echo "docker-compose.yml valide"
+          echo "docker-compose.yml is valid"

@@ -1,5 +1,5 @@
-# Remise a zero totale de la stack. Detruit toutes les donnees locales.
+# Full reset of the stack. Destroys every piece of local data.
 $ErrorActionPreference = "Stop"
 docker compose down -v
 docker compose up -d
-Write-Host "Stack reconstruite. Attends les 4 '[listener] query started'." -ForegroundColor Green
+Write-Host "Stack rebuilt. Wait for the 4 '[listener] query started' lines." -ForegroundColor Green

@@ -1,17 +1,17 @@
-# Normalise tout en LF dans le depot, quelle que soit la machine.
+# Normalise everything to LF inside the repository, whatever the machine.
 * text=auto eol=lf
 
-# Scripts qui doivent imperativement rester en LF (executes sous Linux)
+# Scripts that must stay LF (they are executed on Linux)
 *.sh        text eol=lf
 *.sql       text eol=lf
 *.yml       text eol=lf
 *.yaml      text eol=lf
 Dockerfile  text eol=lf
 
-# Scripts Windows
+# Windows scripts
 *.ps1       text eol=crlf
 
-# Binaires : ne jamais toucher
+# Binaries: never touch
 *.png       binary
 *.jpg       binary
 *.gif       binary

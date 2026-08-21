@@ -1,7 +1,7 @@
-# Prometheus fonctionne en "pull" : c'est lui qui vient chercher les metriques
-# sur chaque cible, pas l'inverse. Consequence pratique : un service qui tombe
-# devient une cible "down" visible, alors qu'en mode "push" il disparaitrait
-# simplement du tableau de bord sans que personne ne le remarque.
+# Prometheus works by "pull": it goes and fetches the metrics from each target,
+# not the other way round. The practical consequence: a service that dies
+# becomes a visible "down" target, whereas in "push" mode it would simply
+# vanish from the dashboard without anyone noticing.
 
 global:
   scrape_interval: 15s
@@ -22,8 +22,8 @@ scrape_configs:
         labels:
           component: streaming
 
-  # Prometheus se surveille lui-meme : si ce job disparait des graphiques,
-  # c'est la supervision elle-meme qui est tombee.
+  # Prometheus scrapes itself: if this job disappears from the charts, it is
+  # the monitoring that went down, not the pipeline.
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]

@@ -60,7 +60,7 @@ def freshness_check():
             rows = []
             for doc in collection.find({}, {"device_id": 1, "site_id": 1, "ts": 1}):
                 ts = doc["ts"]
-                if ts.tzinfo is None:           # Mongo renvoie du naif en UTC
+                if ts.tzinfo is None:           # Mongo returns naive datetimes in UTC
                     ts = ts.replace(tzinfo=UTC)
                 rows.append({
                     "device_id": doc["device_id"],

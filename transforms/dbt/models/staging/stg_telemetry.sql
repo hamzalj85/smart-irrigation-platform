@@ -1,5 +1,5 @@
--- Couche de staging : renommage, typage, aucune logique metier.
--- Materialise en vue : reflete toujours les derniers Parquet ecrits par Spark.
+-- Staging layer: renaming and typing, no business logic.
+-- Materialised as a view: always reflects the latest Parquet written by Spark.
 
 with source as (
 

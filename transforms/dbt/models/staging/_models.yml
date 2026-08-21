@@ -2,20 +2,20 @@ version: 2
 
 models:
   - name: stg_telemetry
-    description: Telemetrie validee, renommee et typee. Une ligne par mesure.
+    description: Validated telemetry, renamed and typed. One row per reading.
     columns:
       - name: device_id
-        description: Identifiant de l'ESP32, cle de partitionnement Kafka.
+        description: ESP32 identifier, also the Kafka partition key.
         tests: [not_null]
       - name: measured_at
-        description: Heure de l'evenement (UTC), posee par le capteur.
+        description: Event time (UTC), stamped by the sensor itself.
         tests: [not_null]
       - name: soil_moisture_pct
-        description: Humidite volumetrique du sol, apres calibration.
+        description: Volumetric soil moisture, after calibration.
         tests:
           - not_null
           - accepted_range: {min_value: 0, max_value: 100}
       - name: air_temp_c
-        description: Temperature de l'air, apres calibration.
+        description: Air temperature, after calibration.
         tests:
           - accepted_range: {min_value: -40, max_value: 80}

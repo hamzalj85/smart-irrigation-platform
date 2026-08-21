@@ -102,8 +102,8 @@ def main() -> int:
     data = build_features(hourly, threshold=args.threshold)
 
     if len(data) < args.min_rows:
-        print(f"ECHEC : {len(data)} lignes exploitables, minimum {args.min_rows}.\n"
-              f"Genere un historique : python ml/generate_history.py --days 45",
+        print(f"FAILED: {len(data)} usable rows, minimum is {args.min_rows}.\n"
+              f"Generate a history: python ml/generate_history.py --days 45",
               file=sys.stderr)
         return 2
 
@@ -111,7 +111,7 @@ def main() -> int:
     x_train, y_train = train[FEATURE_COLUMNS], train[TARGET_COLUMN].astype(int)
     x_test, y_test = test[FEATURE_COLUMNS], test[TARGET_COLUMN].astype(int)
 
-    # --- Les chiffres que le memoire d'origine omettait ---------------------
+    # --- The figures the original thesis left out ---------------------------
     dataset = {
         "rows_total": len(data),
         "rows_train": len(train),
@@ -167,7 +167,7 @@ def main() -> int:
                       "selected": best_name}, indent=2))
 
     if args.no_upload:
-        print("--no-upload : rien n'a ete envoye dans MinIO")
+        print("--no-upload: nothing was sent to MinIO")
         return 0
 
     bucket = os.getenv("MINIO_BUCKET", "irrigation")

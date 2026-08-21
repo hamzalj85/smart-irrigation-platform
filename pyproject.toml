@@ -5,11 +5,11 @@ description = "IoT to lakehouse pipeline: MQTT, Kafka, Spark, MinIO, dbt, Airflo
 requires-python = ">=3.11"
 
 # ---------------------------------------------------------------------------
-# Ruff : le jeu de regles est declare explicitement, pas herite des defauts.
-# Les defauts changent d'une version a l'autre ; une CI doit etre deterministe.
+# Ruff: the rule set is declared explicitly, not inherited from the defaults.
+# Defaults change between versions; a CI pipeline has to be deterministic.
 # ---------------------------------------------------------------------------
 [tool.ruff]
-target-version = "py312"
+target-version = "py311"
 line-length = 100
 extend-exclude = [
     ".venv",
@@ -25,22 +25,22 @@ select = [
     "W",    # warnings
     "I",    # import sorting
     "UP",   # pyupgrade
-    "B",    # bugbear : pieges courants
+    "B",    # bugbear: common traps
     "C4",   # comprehensions
     "SIM",  # simplifications
-    "RUF",  # regles propres a ruff
+    "RUF",  # ruff-specific rules
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Ces fichiers manipulent sys.path avant d'importer : c'est intentionnel.
+# These files manipulate sys.path before importing: that is intentional.
 "ml/*" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Les modules testes ne sont pas un paquet installe : on les rend importables.
+# The modules under test are not an installed package: make them importable.
 pythonpath = ["ml", "ingestion/simulator", "ingestion/bridge", "streaming/spark"]
 addopts = "-q --strict-markers"
 markers = [
-    "spark: demande PySpark et une JVM (plus lent)",
-    "integration: demande la stack Docker complete, exclu par defaut",
+    "spark: requires PySpark and a JVM (slower)",
+    "integration: requires the full Docker stack, excluded by default",
 ]

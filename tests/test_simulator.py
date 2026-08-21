@@ -1,13 +1,14 @@
-"""Physique du sol et calibration du capteur.
+"""Soil physics and sensor calibration.
 
-La calibration est le genre de code qu'on ecrit une fois et qu'on ne relit
-jamais -- et dont une erreur de signe passe inapercue pendant des mois, parce
-que les valeurs restent plausibles. D'ou ces tests.
+Calibration is the kind of code you write once and never read again -- and
+where a sign error goes unnoticed for months, because the values stay
+plausible. Hence these tests.
 """
 from __future__ import annotations
 
 import argparse
 import random
+from collections import Counter
 
 import pytest
 from simulator import (
@@ -22,67 +23,67 @@ from simulator import (
 
 
 # --------------------------------------------------------------------------
-# Calibration du capteur resistif
+# Resistive probe calibration
 # --------------------------------------------------------------------------
 @pytest.mark.parametrize("pct", [0.0, 12.5, 33.3, 50.0, 78.9, 100.0])
-def test_calibration_aller_retour(pct):
-    """Les deux conversions doivent etre reciproques."""
+def test_calibration_round_trips(pct):
+    """The two conversions must be reciprocal."""
     assert raw_to_moisture(moisture_to_raw(pct)) == pytest.approx(pct, abs=0.1)
 
 
-def test_sol_sec_donne_la_valeur_haute_de_l_adc():
+def test_dry_soil_gives_the_high_adc_value():
     assert moisture_to_raw(0.0) == ADC_DRY
 
 
-def test_sol_sature_donne_la_valeur_basse_de_l_adc():
+def test_saturated_soil_gives_the_low_adc_value():
     assert moisture_to_raw(100.0) == ADC_WET
 
 
-def test_la_relation_est_decroissante():
-    """Plus le sol est humide, moins il resiste : la courbe descend.
+def test_the_relationship_is_decreasing():
+    """The wetter the soil, the less it resists: the curve goes down.
 
-    Une inversion de signe ici produirait des valeurs parfaitement
-    plausibles et un modele qui apprend l'inverse de la realite.
+    A sign inversion here would produce perfectly plausible values and a model
+    that learns the inverse of reality.
     """
-    valeurs = [moisture_to_raw(p) for p in range(0, 101, 10)]
-    assert valeurs == sorted(valeurs, reverse=True)
+    values = [moisture_to_raw(p) for p in range(0, 101, 10)]
+    assert values == sorted(values, reverse=True)
 
 
-def test_la_valeur_brute_reste_dans_la_plage_de_l_adc_12_bits():
+def test_the_raw_value_stays_within_the_12_bit_adc_range():
     for pct in range(0, 101):
         assert 0 <= moisture_to_raw(pct) <= 4095
 
 
 # --------------------------------------------------------------------------
-# Analyse des durees
+# Duration parsing
 # --------------------------------------------------------------------------
-@pytest.mark.parametrize(("texte", "secondes"), [
+@pytest.mark.parametrize(("text", "seconds"), [
     ("5", 5), ("5s", 5), ("2m", 120), ("1h", 3600), ("0.5m", 30), (" 10s ", 10),
 ])
-def test_parse_duration(texte, secondes):
-    assert parse_duration(texte) == pytest.approx(secondes)
+def test_parse_duration(text, seconds):
+    assert parse_duration(text) == pytest.approx(seconds)
 
 
-@pytest.mark.parametrize("texte", ["", "abc", "5j", "-3s"])
-def test_parse_duration_refuse_l_invalide(texte):
-    """Une duree invalide doit echouer a l'analyse des arguments, pas plus tard."""
+@pytest.mark.parametrize("text", ["", "abc", "5d", "-3s"])
+def test_parse_duration_rejects_invalid_input(text):
+    """An invalid duration must fail at argument parsing, not later."""
     with pytest.raises(argparse.ArgumentTypeError):
-        parse_duration(texte)
+        parse_duration(text)
 
 
 # --------------------------------------------------------------------------
-# Modele physique du sol
+# Soil physical model
 # --------------------------------------------------------------------------
-def test_le_sol_seche_quand_on_n_arrose_pas():
+def test_the_soil_dries_when_it_is_not_irrigated():
     rng = random.Random(1)
     device = Device.create(1, "site-a", rng)
     device.moisture = 70.0
     device.irrigating = False
-    device.step(600, rng)          # dix minutes
+    device.step(600, rng)          # ten minutes
     assert device.moisture < 70.0
 
 
-def test_l_irrigation_se_declenche_sous_le_seuil():
+def test_irrigation_triggers_below_the_threshold():
     rng = random.Random(1)
     device = Device.create(1, "site-a", rng)
     device.moisture = device.irrigation_threshold + 0.05
@@ -91,8 +92,8 @@ def test_l_irrigation_se_declenche_sous_le_seuil():
     assert device.irrigating
 
 
-def test_l_irrigation_remonte_l_humidite_puis_s_arrete():
-    """Le cycle complet : c'est la dent de scie visible dans Grafana."""
+def test_irrigation_raises_moisture_then_stops():
+    """The full cycle: this is the sawtooth visible in Grafana."""
     rng = random.Random(1)
     device = Device.create(1, "site-a", rng)
     device.moisture = 30.0
@@ -101,11 +102,11 @@ def test_l_irrigation_remonte_l_humidite_puis_s_arrete():
         device.step(60, rng)
         if not device.irrigating:
             break
-    assert not device.irrigating, "l'irrigation ne s'est jamais arretee"
+    assert not device.irrigating, "irrigation never stopped"
     assert 80.0 <= device.moisture <= 95.0
 
 
-def test_l_humidite_reste_dans_des_bornes_physiques():
+def test_moisture_stays_within_physical_bounds():
     rng = random.Random(7)
     device = Device.create(1, "site-a", rng)
     for _ in range(5000):
@@ -113,37 +114,40 @@ def test_l_humidite_reste_dans_des_bornes_physiques():
         assert 0.0 <= device.moisture <= 100.0
 
 
-def test_chaque_appareil_a_sa_propre_derive():
-    """Deux capteurs bon marche ne sont jamais calibres pareil."""
+def test_each_device_has_its_own_drift():
+    """Two cheap probes are never calibrated the same way."""
     rng = random.Random(42)
     devices = [Device.create(i, "site-a", rng) for i in range(1, 7)]
-    biais = {round(d.calibration_bias, 6) for d in devices}
-    assert len(biais) == 6
+    biases = {round(d.calibration_bias, 6) for d in devices}
+    assert len(biases) == 6
 
 
 # --------------------------------------------------------------------------
-# Injection de defauts
+# Fault injection
 # --------------------------------------------------------------------------
-def test_le_doublon_produit_deux_messages_identiques():
+BASE_PAYLOAD = {
+    "device_id": "esp32-01",
+    "ts": "2026-08-10T00:00:00.000Z",
+    "soil_moisture_pct": 50.0,
+    "air_temp_c": 20.0,
+    "air_humidity_pct": 60.0,
+}
+
+
+def test_the_duplicate_fault_produces_two_identical_messages():
     rng = random.Random(0)
-    stats: dict = __import__("collections").Counter()
-    base = {"device_id": "esp32-01", "ts": "2026-08-10T00:00:00.000Z",
-            "soil_moisture_pct": 50.0, "air_temp_c": 20.0,
-            "air_humidity_pct": 60.0}
+    stats: Counter = Counter()
     for _ in range(200):
-        out = inject_fault(dict(base), rng, stats)
+        out = inject_fault(dict(BASE_PAYLOAD), rng, stats)
         if len(out) == 2:
             assert out[0] == out[1]
             return
-    pytest.fail("aucun doublon genere en 200 essais")
+    pytest.fail("no duplicate generated in 200 attempts")
 
 
-def test_les_defauts_sont_comptabilises():
+def test_faults_are_accounted_for():
     rng = random.Random(0)
-    stats: dict = __import__("collections").Counter()
-    base = {"device_id": "esp32-01", "ts": "2026-08-10T00:00:00.000Z",
-            "soil_moisture_pct": 50.0, "air_temp_c": 20.0,
-            "air_humidity_pct": 60.0}
+    stats: Counter = Counter()
     for _ in range(100):
-        inject_fault(dict(base), rng, stats)
+        inject_fault(dict(BASE_PAYLOAD), rng, stats)
     assert sum(stats.values()) == 100

@@ -1,6 +1,7 @@
-# Source de donnees provisionnee au demarrage : aucun clic dans l'interface.
-# L'uid est fixe ("prometheus") car les tableaux de bord y font reference.
-# Sans uid stable, un dashboard importe pointerait vers une source inexistante.
+# Datasource provisioned at startup: no clicking in the interface.
+# The uid is pinned ("prometheus") because the dashboards reference it.
+# Without a stable uid, an imported dashboard would point at a datasource that
+# does not exist.
 apiVersion: 1
 
 datasources:
@@ -12,5 +13,5 @@ datasources:
     isDefault: true
     editable: false
     jsonData:
-      timeInterval: 15s        # doit correspondre au scrape_interval
+      timeInterval: 15s        # must match Prometheus scrape_interval
       httpMethod: POST

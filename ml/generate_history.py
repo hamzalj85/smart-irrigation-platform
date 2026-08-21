@@ -89,31 +89,31 @@ def main() -> int:
     p.add_argument("--days", type=int, default=45)
     p.add_argument("--sensors", type=int, default=6)
     p.add_argument("--interval", type=parse_duration, default="5m",
-                   help="delai entre deux mesures simulees (ex: 5m)")
+                   help="delay between two simulated readings (e.g. 5m)")
     p.add_argument("--site-id", default="site-a")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--prefix", default="telemetry")
     p.add_argument("--dry-run", action="store_true",
-                   help="genere et resume sans ecrire dans MinIO")
+                   help="generate and summarise without writing to MinIO")
     args = p.parse_args()
 
-    # L'historique s'arrete hier soir : on ne veut pas ecraser les partitions
-    # que le pipeline temps reel alimente aujourd'hui.
+    # The history stops at midnight last night: we must not overwrite the
+    # partitions the real-time pipeline is filling today.
     end = datetime.now(UTC).replace(
         hour=0, minute=0, second=0, microsecond=0)
 
     frame = build_history(args.days, args.sensors, args.interval,
                           args.site_id, args.seed, end)
 
-    print(f"{len(frame):,} lectures generees")
-    print(f"  du {frame['ts'].min()} au {frame['ts'].max()}")
+    print(f"{len(frame):,} readings generated")
+    print(f"  from {frame['ts'].min()} to {frame['ts'].max()}")
     print(f"  {frame['device_id'].nunique()} appareils, "
-          f"{frame['date'].nunique()} journees")
-    print(f"  humidite : {frame['soil_moisture_pct'].min():.1f} % -> "
+          f"{frame['date'].nunique()} days")
+    print(f"  moisture: {frame['soil_moisture_pct'].min():.1f} % -> "
           f"{frame['soil_moisture_pct'].max():.1f} %")
 
     if args.dry_run:
-        print("--dry-run : rien n'a ete ecrit")
+        print("--dry-run: nothing was written")
         return 0
 
     bucket = os.getenv("MINIO_BUCKET", "irrigation")
@@ -123,7 +123,7 @@ def main() -> int:
         os.environ["MINIO_ROOT_USER"],
         os.environ["MINIO_ROOT_PASSWORD"],
     )
-    print(f"ecrit dans s3://{bucket}/{args.prefix}/site_id=.../date=...")
+    print(f"written to s3://{bucket}/{args.prefix}/site_id=.../date=...")
     return 0
 
 

@@ -128,6 +128,11 @@ aggregation cannot simply process "today's partition". This is the classic
 late-arriving-data problem and it is why `daily_aggregation` rebuilds rather
 than appends.
 
+The layout as MinIO actually stores it — one directory level per partition key,
+which is what makes partition pruning possible:
+
+![Parquet partitions in MinIO](media/minio_files.png)
+
 ---
 
 ## 5. Storage and state
@@ -172,6 +177,14 @@ On AWS the checkpoint would go to EFS or HDFS.
 environment variable of an already-initialised container has no effect — the
 same is true for Postgres, MySQL and MongoDB. Either recreate the volume or
 change the password through the service's own tooling.
+
+### The serving layer holds one document per device, not a history
+
+MongoDB answers a single question — *what is the current state of this device?*
+— so the collection stays the size of the fleet, whatever the volume ingested.
+The history lives in Parquet:
+
+![One document per device in MongoDB](media/mongodb_files.png)
 
 ---
 

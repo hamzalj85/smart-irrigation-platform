@@ -1,19 +1,19 @@
-"""Test d'integration : un message publie sur MQTT arrive-t-il en Parquet ?
+"""Integration test: does a message published on MQTT reach Parquet?
 
-C'est le seul test qui traverse toute la chaine -- Mosquitto, le pont, Kafka,
-Spark, MinIO. Il ne remplace pas les tests unitaires : il verifie ce qu'eux
-ne peuvent pas voir, c'est-a-dire le **cablage**. Les portes qualite peuvent
-etre parfaites et le pipeline ne rien produire parce qu'un identifiant est
-faux ou qu'un topic n'existe pas.
+This is the only test that walks the whole chain -- Mosquitto, the bridge,
+Kafka, Spark, MinIO. It does not replace the unit tests: it checks what they
+cannot see, namely the **wiring**. The quality gates can be perfect and the
+pipeline still produce nothing, because a credential is wrong or a topic does
+not exist.
 
-Il est marque `integration` et **exclu par defaut** : il demande la stack
-Docker en marche. En local :
+It is marked `integration` and **excluded by default**: it needs the Docker
+stack running. Locally:
 
     docker compose up -d
     pytest -m integration
 
-La CI ne le lance pas -- monter onze services pour chaque commit couterait
-plus cher que ce qu'il rapporte. Il se lance a la main avant une publication.
+CI does not run it -- standing up eleven services on every commit would cost
+more than it returns. It is run by hand before a release.
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ POLL_SECONDS = 5
 def load_env() -> dict[str, str]:
     env_file = Path(__file__).resolve().parents[1] / ".env"
     if not env_file.exists():
-        pytest.skip(".env absent : la stack n'est pas configuree")
+        pytest.skip(".env is missing: the stack is not configured")
     return {
         m.group(1): m.group(2).strip().strip('"').strip("'")
         for m in re.finditer(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$",
@@ -80,7 +80,7 @@ def publish(env, payload: dict) -> None:
 
 
 def wait_for(con, query: str, params: list) -> int:
-    """Interroge le lac jusqu'a trouver la ligne, ou abandonne."""
+    """Polls the lake until the row shows up, or gives up."""
     deadline = time.monotonic() + TIMEOUT_SECONDS
     last_error = None
     while time.monotonic() < deadline:
@@ -88,13 +88,13 @@ def wait_for(con, query: str, params: list) -> int:
             found = con.execute(query, params).fetchone()[0]
             if found:
                 return found
-        except Exception as exc:          # le prefixe peut ne pas exister encore
+        except Exception as exc:          # the prefix may not exist yet
             last_error = exc
         time.sleep(POLL_SECONDS)
-    pytest.fail(f"rien trouve en {TIMEOUT_SECONDS} s (derniere erreur : {last_error})")
+    pytest.fail(f"nothing found in {TIMEOUT_SECONDS} s (last error: {last_error})")
 
 
-def test_un_message_valide_arrive_en_parquet(env, lake):
+def test_a_valid_message_lands_in_parquet(env, lake):
     device_id = f"itest-{uuid.uuid4().hex[:8]}"
     now = datetime.now(UTC)
     publish(env, {
@@ -118,13 +118,13 @@ def test_un_message_valide_arrive_en_parquet(env, lake):
     assert found >= 1
 
 
-def test_un_message_sans_ts_finit_en_dead_letter(env, lake):
-    """Le pont doit l'arreter avant Kafka : il ne doit PAS etre dans le lac."""
+def test_a_message_without_ts_ends_up_dead_lettered(env, lake):
+    """The bridge must stop it before Kafka: it must NOT be in the lake."""
     device_id = f"itest-bad-{uuid.uuid4().hex[:8]}"
     publish(env, {"device_id": device_id, "site_id": "site-a",
                   "soil_moisture_pct": 47.5})
 
-    time.sleep(60)          # laisse le temps a Spark d'ecrire un lot complet
+    time.sleep(60)          # give Spark time to write a full batch
     bucket = env.get("MINIO_BUCKET", "irrigation")
     try:
         found = lake.execute(f"""
@@ -137,8 +137,8 @@ def test_un_message_sans_ts_finit_en_dead_letter(env, lake):
     assert found == 0
 
 
-def test_une_valeur_hors_bornes_finit_en_quarantaine(env, lake):
-    """Le pont la laisse passer (structure valide), Spark la rejette."""
+def test_an_out_of_range_value_ends_up_in_quarantine(env, lake):
+    """The bridge lets it through (valid structure), Spark rejects it."""
     device_id = f"itest-oor-{uuid.uuid4().hex[:8]}"
     now = datetime.now(UTC)
     publish(env, {

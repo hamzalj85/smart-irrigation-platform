@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Job Spark Structured Streaming — télémétrie d'irrigation.
+"""Spark Structured Streaming job -- irrigation telemetry.
 
-Kafka -> schéma explicite -> portes qualité -> déduplication
-     -> Parquet propre + Parquet quarantaine.
+Kafka -> explicit schema -> quality gates -> deduplication
+     -> clean Parquet + quarantine Parquet.
 
-Les fonctions de transformation sont pures : elles prennent un DataFrame et
-en rendent un autre. Elles se testent donc en batch, sans Kafka (Phase 10).
+The transformation functions are pure: they take a DataFrame and return
+another one. They can therefore be tested in batch mode, without Kafka.
 """
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ except ImportError:  # pragma: no cover - exercised in environments without PySp
 
 
 # ---------------------------------------------------------------------------
-# Contrat de données
+# Data contract
 # ---------------------------------------------------------------------------
 TELEMETRY_SCHEMA = StructType([
     StructField("device_id",         StringType(),  True),
@@ -53,61 +53,61 @@ TELEMETRY_SCHEMA = StructType([
 ])
 
 # ---------------------------------------------------------------------------
-# Règles qualité — les seuils physiques du matériel, pas des nombres ronds
+# Quality rules -- the physical limits of the hardware, not round numbers
 # ---------------------------------------------------------------------------
 RANGES: dict[str, tuple[float, float]] = {
-    "soil_moisture_pct": (0.0, 100.0),      # pourcentage volumétrique
-    "air_temp_c":        (-40.0, 80.0),     # plage du DHT22 élargie
+    "soil_moisture_pct": (0.0, 100.0),      # volumetric percentage
+    "air_temp_c":        (-40.0, 80.0),     # DHT22 datasheet range, widened
     "air_humidity_pct":  (0.0, 100.0),
-    "soil_raw":          (0, 4095),         # ADC 12 bits de l'ESP32
-    "battery_v":         (2.5, 5.0),        # LiPo + marge
+    "soil_raw":          (0, 4095),         # 12-bit ESP32 ADC
+    "battery_v":         (2.5, 5.0),        # LiPo range plus margin
 }
 REQUIRED_FIELDS = ["device_id", "site_id", "ts", "soil_moisture_pct"]
 MAX_FUTURE_MINUTES = 5
 MAX_LATE_HOURS = 24
 WATERMARK = "10 minutes"
 # ---------------------------------------------------------------------------
-# Metriques Prometheus
+# Prometheus metrics
 #
-# Ce que Spark n'expose pas de lui-meme : les lignes jetees par le watermark,
-# le retard du watermark, et le detail des rejets qualite. Ce sont exactement
-# les chiffres qu'on veut voir sur un tableau de bord.
+# What Spark does not expose by itself: the rows discarded by the watermark,
+# the watermark lag, and the breakdown of quality rejections. Those are exactly
+# the numbers you want on a dashboard.
 # ---------------------------------------------------------------------------
 QUERY_INPUT_ROWS = PromCounter(
     "irrigation_spark_input_rows_total",
-    "Lignes lues depuis Kafka, par requete de streaming", ["query"],
+    "Rows read from Kafka, per streaming query", ["query"],
 )
 QUERY_OUTPUT_ROWS = PromCounter(
     "irrigation_spark_output_rows_total",
-    "Lignes ecrites par le sink, par requete de streaming", ["query"],
+    "Rows written by the sink, per streaming query", ["query"],
 )
 WATERMARK_DROPPED = PromCounter(
     "irrigation_spark_rows_dropped_by_watermark_total",
-    "Lignes arrivees trop tard et abandonnees par un operateur a etat", ["query"],
+    "Rows that arrived too late and were dropped by a stateful operator", ["query"],
 )
 BATCH_DURATION = Gauge(
     "irrigation_spark_batch_duration_seconds",
-    "Duree du dernier micro-lot", ["query"],
+    "Duration of the last micro-batch", ["query"],
 )
 QUARANTINE = PromCounter(
     "irrigation_spark_quarantined_rows_total",
-    "Lignes mises en quarantaine, par regle qualite", ["rule"],
+    "Rows sent to quarantine, per quality rule", ["rule"],
 )
 CLEAN_ROWS = PromCounter(
     "irrigation_spark_clean_rows_total",
-    "Lignes ayant franchi les trois portes qualite",
+    "Rows that passed the three quality gates",
 )
 DEVICE_MOISTURE = Gauge(
     "irrigation_device_soil_moisture_pct",
-    "Derniere humidite du sol connue", ["device_id", "site_id"],
+    "Last known soil moisture", ["device_id", "site_id"],
 )
 DEVICE_BATTERY = Gauge(
     "irrigation_device_battery_volts",
-    "Derniere tension de batterie connue", ["device_id", "site_id"],
+    "Last known battery voltage", ["device_id", "site_id"],
 )
 DEVICE_LAST_SEEN = Gauge(
     "irrigation_device_last_reading_timestamp_seconds",
-    "Horodatage de la derniere mesure valide (epoch)", ["device_id", "site_id"],
+    "Timestamp of the last valid reading (epoch seconds)", ["device_id", "site_id"],
 )
 
 STATE_FIELDS = ["site_id", "ts", "soil_moisture_pct", "soil_raw",
@@ -115,15 +115,15 @@ STATE_FIELDS = ["site_id", "ts", "soil_moisture_pct", "soil_raw",
 
 
 # ---------------------------------------------------------------------------
-# Session et source
+# Session and source
 # ---------------------------------------------------------------------------
 
 class ProgressLogger(StreamingQueryListener):
-    """Expose ce que les logs Spark ne montrent pas : les lignes que le
-    watermark a jetées. Sans ça, une perte de données est invisible."""
+    """Exposes what the Spark logs do not show: the rows the watermark threw
+    away. Without this, a data loss is invisible by design."""
 
     def onQueryStarted(self, event):
-        print(f"[listener] query started : {event.name}", flush=True)
+        print(f"[listener] query started: {event.name}", flush=True)
 
     def onQueryProgress(self, event):
         p = event.progress
@@ -138,14 +138,14 @@ class ProgressLogger(StreamingQueryListener):
             WATERMARK_DROPPED.labels(query=p.name).inc(dropped)
         BATCH_DURATION.labels(query=p.name).set(p.batchDuration / 1000.0)
 
-        flag = "  <-- PERTE" if dropped else ""
+        flag = "  <-- LOSS" if dropped else ""
         print(f"[{p.name}] input={p.numInputRows} output={out} "
               f"droppedByWatermark={dropped} watermark={wm}{flag}", flush=True)
     def onQueryIdle(self, event):
         pass
 
     def onQueryTerminated(self, event):
-        print(f"[listener] terminated : {event.id}", flush=True)
+        print(f"[listener] terminated: {event.id}", flush=True)
 
 def build_session(app_name: str = "telemetry-job") -> SparkSession:
     builder = (
@@ -164,8 +164,8 @@ def build_session(app_name: str = "telemetry-job") -> SparkSession:
             .config("spark.hadoop.fs.s3a.endpoint", endpoint)
             .config("spark.hadoop.fs.s3a.access.key", os.environ["S3_ACCESS_KEY"])
             .config("spark.hadoop.fs.s3a.secret.key", os.environ["S3_SECRET_KEY"])
-            # MinIO n'a pas de DNS par bucket : l'URL est /bucket/objet,
-            # pas bucket.host/objet. Sans ceci, chaque requête échoue.
+            # MinIO has no per-bucket DNS: the URL is /bucket/object, not
+            # bucket.host/object. Without this, every request fails.
             .config("spark.hadoop.fs.s3a.path.style.access", "true")
             .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
             .config("spark.hadoop.fs.s3a.impl",
@@ -192,7 +192,7 @@ def read_kafka(spark: SparkSession) -> DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Transformations pures
+# Pure transformations
 # ---------------------------------------------------------------------------
 def parse_telemetry(raw: DataFrame) -> DataFrame:
     return (
@@ -211,9 +211,9 @@ def parse_telemetry(raw: DataFrame) -> DataFrame:
 
 
 def apply_quality_gates(df: DataFrame) -> DataFrame:
-    """Ajoute `quality_reason` : NULL si l'enregistrement passe, sinon le motif.
+    """Adds `quality_reason`: NULL when the record passes, the reason otherwise.
 
-    Les règles sont évaluées dans l'ordre ; la première qui échoue l'emporte.
+    The rules are evaluated in order; the first one that fails wins.
     """
     unparseable = (F.col("device_id").isNull()
                    & F.col("ts").isNull()
@@ -226,9 +226,9 @@ def apply_quality_gates(df: DataFrame) -> DataFrame:
         *[F.when((F.col(c) < lo) | (F.col(c) > hi), F.lit(c))
           for c, (lo, hi) in RANGES.items()]))
 
-    # Référence = l'heure d'ingestion du broker, pas l'horloge murale.
-    # Le verdict devient déterministe : rejouer les mêmes données donne
-    # exactement les mêmes rejets, quel que soit le moment du traitement.
+    # Reference = the broker ingestion time, never the wall clock.
+    # This makes the verdict deterministic: replaying the same data produces
+    # exactly the same rejections, whenever the processing happens.
     future = F.col("ts") > F.col("kafka_ts") + F.expr(
         f"INTERVAL {MAX_FUTURE_MINUTES} MINUTES")
     too_old = F.col("ts") < F.col("kafka_ts") - F.expr(
@@ -248,7 +248,7 @@ def apply_quality_gates(df: DataFrame) -> DataFrame:
 
 
 def clean_records(df: DataFrame) -> DataFrame:
-    """Flux valide : dédupliqué sur (device_id, ts), partitionné par site/date."""
+    """Valid stream: deduplicated on (device_id, ts), partitioned by site/date."""
     return (
         df.filter(F.col("quality_reason").isNull())
         .withWatermark("ts", WATERMARK)
@@ -261,15 +261,15 @@ def clean_records(df: DataFrame) -> DataFrame:
     )
 
 def device_state_stream(df: DataFrame) -> DataFrame:
-    """Flux destine a MongoDB : ni watermark ni deduplication.
+    """Stream headed for MongoDB: no watermark, no deduplication.
 
-    L'upsert conditionnel cote Mongo est deja idempotent et insensible a
-    l'ordre. Un operateur a etat ici serait un point de fragilite gratuit.
+    The conditional upsert on the Mongo side is already idempotent and order
+    insensitive. A stateful operator here would be a free point of fragility.
     """
     return df.filter(F.col("quality_reason").isNull())
 
 def quarantined_records(df: DataFrame) -> DataFrame:
-    """Flux rejeté : motif + payload original, partitionné par date d'ingestion."""
+    """Rejected stream: reason + original payload, partitioned by ingestion date."""
     return (
         df.filter(F.col("quality_reason").isNotNull())
         .withColumn("quality_rule",
@@ -284,8 +284,8 @@ _mongo_client = None
 
 
 def _device_state_collection():
-    """Client réutilisé entre micro-lots : ouvrir une connexion toutes les
-    15 secondes serait du gaspillage pur."""
+    """Client reused across micro-batches: opening a connection every 15
+    seconds would be pure waste."""
     global _mongo_client
     from pymongo import MongoClient
     if _mongo_client is None:
@@ -296,12 +296,12 @@ def _device_state_collection():
 
 
 def upsert_device_state(batch_df: DataFrame, batch_id: int) -> None:
-    """Écrit l'état courant de chaque appareil, sans jamais reculer.
+    """Writes the current state of each device, and never moves it backwards.
 
-    Deux opérations par appareil :
-      1. $setOnInsert crée le document s'il n'existe pas encore ;
-      2. $set ne s'applique QUE si le ts stocké est plus ancien.
-    Un micro-lot en retard ne peut donc pas écraser un état plus récent.
+    Two operations per device:
+      1. $setOnInsert creates the document when it does not exist yet;
+      2. $set applies ONLY when the stored ts is older.
+    A late micro-batch therefore cannot overwrite a more recent state.
     """
     from pymongo import UpdateOne
 
@@ -310,7 +310,7 @@ def upsert_device_state(batch_df: DataFrame, batch_id: int) -> None:
             .withColumn("_rn", F.row_number().over(window))
             .filter(F.col("_rn") == 1)
             .drop("_rn")
-            .collect())          # une ligne par appareil : jamais volumineux
+            .collect())          # one row per device: never large
     if not rows:
         return
 
@@ -370,11 +370,11 @@ def start_parquet_sink(df: DataFrame, name: str, path: str,
 
 
 def count_quarantine(batch_df: DataFrame, batch_id: int) -> None:
-    """Compte les rejets par regle et alimente Prometheus.
+    """Counts rejections per rule and feeds Prometheus.
 
-    On remplace l'ancien sink console en mode `complete` : celui-ci affichait
-    un cumul depuis le demarrage, ce qui ne se derive pas en taux. Un compteur
-    Prometheus, lui, se derive avec rate() sur la fenetre qu'on veut.
+    This replaces the former console sink in `complete` mode, which printed a
+    running total since startup -- a figure you cannot differentiate into a
+    rate. A Prometheus counter can be, with rate(), over any window you like.
     """
     rows = batch_df.groupBy("quality_rule").count().collect()
     if not rows:
@@ -402,7 +402,7 @@ def main() -> None:
     spark.sparkContext.setLogLevel(os.getenv("SPARK_LOG_LEVEL", "WARN"))
     spark.streams.addListener(ProgressLogger())
     start_http_server(int(os.getenv("METRICS_PORT", "8000")))
-    print(f"[metrics] Prometheus sur :{os.getenv('METRICS_PORT', '8000')}/metrics",
+    print(f"[metrics] Prometheus on :{os.getenv('METRICS_PORT', '8000')}/metrics",
           flush=True)
 
     data_dir = os.getenv("DATA_DIR", "/data").rstrip("/")

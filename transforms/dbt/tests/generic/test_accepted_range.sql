@@ -1,7 +1,7 @@
 {% test accepted_range(model, column_name, min_value, max_value, inclusive=true) %}
 {#-
-    Un test dbt echoue s'il RENVOIE des lignes.
-    On selectionne donc les valeurs hors bornes : zero ligne = succes.
+    A dbt test fails when it RETURNS rows.
+    So we select the out-of-range values: zero rows means the test passes.
 -#}
 select
     {{ column_name }} as offending_value,

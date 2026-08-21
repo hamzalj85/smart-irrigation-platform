@@ -1,10 +1,10 @@
-# Aucun `container_name:` n'est fixe : Compose derive les noms du repertoire
-# du projet. Deux clones du depot peuvent donc coexister, et personne n'entre
-# en collision avec un autre projet. Les commandes `docker compose exec|logs`
-# utilisent le nom de SERVICE, elles ne sont pas affectees.
+# No `container_name:` is pinned anywhere: Compose derives container names from
+# the project directory. Two clones of this repository can therefore coexist,
+# and neither collides with another project. `docker compose exec|logs` take a
+# SERVICE name, so they are unaffected.
 #
-# Configuration partagee par les cinq conteneurs Airflow.
-# Une ancre YAML (&) definie ici, referencee plus bas par <<: *airflow-common.
+# Configuration shared by the five Airflow containers.
+# A YAML anchor (&) defined here, referenced below with <<: *airflow-common.
 x-airflow-common: &airflow-common
   build: ./orchestration/airflow
   environment:
@@ -18,10 +18,10 @@ x-airflow-common: &airflow-common
     AIRFLOW__API__BASE_URL: http://localhost:8082
     AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
     AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
-    # Developpement uniquement : desactive l'authentification de l'interface.
-    # En production on brancherait un vrai gestionnaire d'identites.
+    # Development only: disables authentication on the web interface.
+    # A real deployment would plug in an actual identity provider.
     AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
-    # --- Acces aux services de la plateforme -----------------------------
+    # --- Access to the platform services ----------------------------------
     MONGO_URI: mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongodb:27017/
     MONGO_DB: irrigation
     MONGO_COLLECTION: device_state
@@ -112,7 +112,7 @@ services:
     build: ./ingestion/bridge
     restart: unless-stopped
     ports:
-      - "8000:8000"        # metriques Prometheus
+      - "8000:8000"        # Prometheus metrics
     depends_on:
       mosquitto:
         condition: service_started
@@ -132,8 +132,8 @@ services:
   spark-streaming:
     build: ./streaming/spark
     ports:
-      - "4040:4040"        # interface Spark
-      - "8001:8000"        # metriques Prometheus
+      - "4040:4040"        # Spark UI
+      - "8001:8000"        # Prometheus metrics
     restart: on-failure:3
     depends_on:
       kafka:
@@ -168,8 +168,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"     # API S3
-      - "9001:9001"     # console web
+      - "9000:9000"     # S3 API
+      - "9001:9001"     # web console
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -233,7 +233,7 @@ services:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------
-  # Supervision
+  # Monitoring
   # ---------------------------------------------------------------------------
   prometheus:
     image: prom/prometheus:v3.13.2
@@ -258,8 +258,8 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
       GF_USERS_ALLOW_SIGN_UP: "false"
-      # Lecture seule sans authentification : pratique pour une demonstration
-      # ou une capture video. L'administration reste protegee par mot de passe.
+      # Anonymous read-only access: convenient for a demo or a screen recording.
+      # Administration stays behind the admin password.
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/irrigation-platform.json
@@ -271,7 +271,7 @@ services:
       - prometheus
 
   # ---------------------------------------------------------------------------
-  # Orchestration : Airflow 3 (LocalExecutor, metadonnees dans Postgres)
+  # Orchestration: Airflow 3 (LocalExecutor, metadata in Postgres)
   # ---------------------------------------------------------------------------
   airflow-postgres:
     image: postgres:16
@@ -300,7 +300,7 @@ services:
       - |
         set -e
         airflow db migrate
-        echo "--- airflow pret ---"
+        echo "--- airflow ready ---"
         airflow version
 
   airflow-apiserver:

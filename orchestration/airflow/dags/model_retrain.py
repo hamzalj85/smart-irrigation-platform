@@ -28,7 +28,7 @@ PROMOTION_METRIC = "f1"
 @dag(
     dag_id="model_retrain",
     description="Retrains the irrigation classifier and promotes it only if it improves",
-    schedule="0 3 * * *",          # apres daily_aggregation (02:00)
+    schedule="0 3 * * *",          # after daily_aggregation (02:00)
     start_date=pendulum.datetime(2026, 8, 1, tz="UTC"),
     catchup=False,
     max_active_runs=1,
@@ -69,8 +69,8 @@ def model_retrain():
             except client.exceptions.NoSuchKey:
                 return None
 
-        # Les versions sont horodatees : l'ordre lexicographique est l'ordre
-        # chronologique. Le dernier prefixe est donc le candidat.
+        # Versions are timestamped: lexicographic order is chronological
+        # order, so the last prefix is the candidate.
         pages = client.get_paginator("list_objects_v2").paginate(
             Bucket=bucket, Prefix="models/", Delimiter="/")
         versions = sorted(
@@ -79,7 +79,7 @@ def model_retrain():
             if p["Prefix"].split("/")[1] != "current"
         )
         if not versions:
-            raise RuntimeError(f"Aucun modele candidat dans s3://{bucket}/models/")
+            raise RuntimeError(f"No candidate model in s3://{bucket}/models/")
         candidate_version = versions[-1]
 
         candidate = read_json(f"models/{candidate_version}/metrics.json")

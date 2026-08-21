@@ -1,17 +1,17 @@
-"""Validation structurelle de la telemetrie, sans aucune dependance externe.
+"""Structural validation of the telemetry, with no external dependency.
 
-Ce module est volontairement isole du reste du pont : il n'importe ni paho,
-ni confluent_kafka, ni prometheus_client. Uniquement la bibliotheque standard.
+This module is deliberately isolated from the rest of the bridge: it imports
+neither paho, nor confluent_kafka, nor prometheus_client. Standard library only.
 
-Pourquoi c'est important : la logique metier n'a aucune raison de trainer
-derriere elle un client Kafka. La separer permet de la tester en trois
-millisecondes, sans installer de dependance compilee, et rend evident ce qui
-releve de la *decision* et ce qui releve du *transport*.
+Why that matters: business logic has no reason to drag a Kafka client behind
+it. Separating the two makes the logic testable in three milliseconds, with no
+compiled dependency to install, and makes obvious what is a *decision* and what
+is *transport*.
 
-La frontiere de responsabilite est ici : ce module juge la **structure**
-(JSON lisible, champs obligatoires, horodatage analysable). Le **sens** des
-valeurs -- bornes physiques, coherence temporelle -- appartient aux portes
-qualite de la couche Spark.
+The responsibility boundary sits here: this module judges **structure**
+(readable JSON, mandatory fields, parseable timestamp). The **meaning** of the
+values -- physical bounds, temporal coherence -- belongs to the quality gates of
+the Spark layer.
 """
 from __future__ import annotations
 
@@ -22,14 +22,14 @@ REQUIRED_FIELDS = ("device_id", "site_id", "ts")
 
 
 def validate_payload(raw: bytes | str) -> tuple[dict | None, str | None]:
-    """Rend `(record, motif)`.
+    """Returns `(record, reason)`.
 
-    `motif` vaut None si le message est structurellement valide. Sinon c'est
-    une chaine `famille:detail` -- la famille permet d'agreger les rejets en
-    supervision sans avoir a analyser le detail.
+    `reason` is None when the message is structurally valid. Otherwise it is a
+    `family:detail` string -- the family lets a dashboard aggregate rejections
+    without having to parse the detail.
 
-    La fonction ne leve jamais : un message invalide n'est pas une erreur de
-    programme, c'est une donnee attendue dans un systeme reel.
+    The function never raises: an invalid message is not a programming error,
+    it is expected data in a real system.
     """
     try:
         record = json.loads(raw)

@@ -14,7 +14,7 @@ ARG AWS_SDK_V=1.12.262
 
 RUN pip install --no-cache-dir "pyspark==${SPARK_V}" "pymongo>=4.8,<5" "prometheus-client>=0.21,<1"
 
-# Connecteur Kafka figé dans l'image : pas de résolution Maven au démarrage.
+# Kafka connector baked into the image: no Maven resolution at startup.
 ENV SPARK_JARS=/usr/local/lib/python3.12/site-packages/pyspark/jars
 RUN set -eux; base=https://repo1.maven.org/maven2; \
     curl -fsSL -o "$SPARK_JARS/spark-sql-kafka-0-10_2.12-${SPARK_V}.jar" \

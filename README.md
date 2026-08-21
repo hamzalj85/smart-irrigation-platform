@@ -1,8 +1,8 @@
 # Smart Irrigation Data Platform
 
-![CI](https://github.com/hamzalj85/smart-irrigation-platform/actions/workflows/ci.yml/badge.svg)
-![License](https://img.shields.io/badge/license-MIT-blue)
-![Python](https://img.shields.io/badge/python-3.12-blue)
+[![CI](https://github.com/hamzalj85/smart-irrigation-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/hamzalj85/smart-irrigation-platform/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue)](pyproject.toml)
 
 An end-to-end data platform for agricultural IoT telemetry: soil-moisture sensors
 publish over MQTT, a bridge forwards to Kafka without losing messages, Spark
@@ -145,9 +145,9 @@ Generate one password per entry:
 openssl rand -base64 18
 ```
 
-Six values to replace: `MOSQUITTO_ESP32_PASSWORD`, `MOSQUITTO_BRIDGE_PASSWORD`,
+Seven values to replace: `MOSQUITTO_ESP32_PASSWORD`, `MOSQUITTO_BRIDGE_PASSWORD`,
 `MINIO_ROOT_PASSWORD`, `MONGO_INITDB_ROOT_PASSWORD`, `AIRFLOW_DB_PASSWORD`,
-`AIRFLOW_JWT_SECRET`, plus `GRAFANA_ADMIN_PASSWORD`.
+`AIRFLOW_JWT_SECRET` and `GRAFANA_ADMIN_PASSWORD`.
 
 ### 3. Generate the Mosquitto password file
 
@@ -391,6 +391,8 @@ Prometheus scrapes the bridge and the Spark driver every 15 seconds. Pull, not
 push: a dead service becomes a visible `DOWN` target instead of quietly
 disappearing from a chart.
 
+![Prometheus targets](docs/media/prometheus.png)
+
 The Grafana dashboard is **provisioned from this repository** — datasource,
 folder and panels are files, not rows in Grafana's internal database.
 `allow_ui_updates` is disabled so the UI cannot overwrite them.
@@ -405,7 +407,7 @@ dropped by the watermark.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -m "not integration and not spark"    # 58 tests, ~2 s
+pytest -m "not integration and not spark"    # 57 tests, ~3 s
 ```
 
 The Spark tests need Java 17 (Spark 3.5 does not support newer JVMs), so they
@@ -413,7 +415,7 @@ run inside the streaming image — same JVM, same PySpark, same Python as
 production:
 
 ```powershell
-.\scripts\test-spark.ps1                     # 13 tests
+.\scripts\test-spark.ps1                     # 14 tests
 ```
 
 The integration test walks the whole chain — publish on MQTT, assert the record
@@ -428,7 +430,7 @@ CI runs four jobs on every push: ruff, the 71 unit tests, `dbt parse`, and
 `docker compose config` — the last one catches broken YAML anchors and missing
 environment variables before they break someone else's clone.
 
-The test worth reading is `test_aucune_fuite_du_futur` in `tests/test_features.py`.
+The test worth reading is `test_no_leakage_from_the_future` in `tests/test_features.py`.
 It builds two datasets identical except for the final hour and asserts that no
 feature of the preceding hours changed. Data leakage raises no error: it just
 produces a flattering score and a useless model.

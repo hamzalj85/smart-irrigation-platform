@@ -1,7 +1,7 @@
 {
   "uid": "irrigation-platform",
-  "title": "Smart Irrigation - Plateforme",
-  "description": "Ingestion, qualite des donnees et etat du parc de capteurs.",
+  "title": "Smart Irrigation - Platform",
+  "description": "Ingestion, data quality and sensor fleet health.",
   "tags": [
     "irrigation",
     "iot",
@@ -29,7 +29,7 @@
     {
       "id": 1,
       "type": "stat",
-      "title": "Debit d'ingestion",
+      "title": "Ingestion throughput",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -90,7 +90,7 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Taux de quarantaine",
+      "title": "Quarantine rate",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -155,7 +155,7 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Capteurs vus < 5 min",
+      "title": "Sensors seen < 5 min ago",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -216,7 +216,7 @@
     {
       "id": 4,
       "type": "stat",
-      "title": "Lignes perdues par le watermark (1 h)",
+      "title": "Rows dropped by the watermark (1 h)",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -277,8 +277,8 @@
     {
       "id": 10,
       "type": "timeseries",
-      "title": "Humidite du sol par capteur",
-      "description": "La dent de scie est le cycle sechage / arrosage. Une courbe plate trahit un capteur bloque.",
+      "title": "Soil moisture per sensor",
+      "description": "The sawtooth is the drying / irrigation cycle. A flat line means a stuck sensor.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -336,8 +336,8 @@
     {
       "id": 11,
       "type": "timeseries",
-      "title": "Ingestion : transferes contre rejets",
-      "description": "Debit mesure par le pont MQTT vers Kafka.",
+      "title": "Ingestion: forwarded vs rejected",
+      "description": "Throughput measured by the MQTT to Kafka bridge.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -357,7 +357,7 @@
           "expr": "rate(irrigation_bridge_messages_total{result=\"forwarded\"}[5m])",
           "refId": "A",
           "format": "time_series",
-          "legendFormat": "transferes"
+          "legendFormat": "forwarded"
         },
         {
           "datasource": {
@@ -405,7 +405,7 @@
     {
       "id": 20,
       "type": "timeseries",
-      "title": "Quarantaine par regle qualite",
+      "title": "Quarantine by quality rule",
       "description": "completeness, range, plausibility, unparseable_payload.",
       "datasource": {
         "type": "prometheus",
@@ -464,8 +464,8 @@
     {
       "id": 21,
       "type": "timeseries",
-      "title": "Duree des micro-lots Spark",
-      "description": "Si la duree depasse le trigger (30 s), le pipeline prend du retard.",
+      "title": "Spark micro-batch duration",
+      "description": "If the duration exceeds the trigger (30 s), the pipeline falls behind.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -523,8 +523,8 @@
     {
       "id": 30,
       "type": "table",
-      "title": "Etat du parc",
-      "description": "Age de la derniere mesure valide, par appareil.",
+      "title": "Fleet status",
+      "description": "Age of the last valid reading, per device.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -595,11 +595,11 @@
               "site_id 3": true
             },
             "renameByName": {
-              "device_id": "Capteur",
+              "device_id": "Sensor",
               "site_id 1": "Site",
               "Value #A": "Silence (s)",
-              "Value #B": "Humidite (%)",
-              "Value #C": "Batterie (V)"
+              "Value #B": "Moisture (%)",
+              "Value #C": "Battery (V)"
             }
           }
         }
@@ -656,7 +656,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Humidite (%)"
+              "options": "Moisture (%)"
             },
             "properties": [
               {
@@ -672,7 +672,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Batterie (V)"
+              "options": "Battery (V)"
             },
             "properties": [
               {

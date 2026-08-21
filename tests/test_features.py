@@ -1,9 +1,9 @@
-"""Construction des variables et decoupage temporel du modele.
+"""Feature construction and time-based splitting for the model.
 
-Le test central de ce fichier est `test_aucune_fuite_du_futur`. Une fuite de
-donnees ne provoque aucune erreur : elle produit un score flatteur et un
-modele inutilisable. C'est le bug le plus couteux de la discipline, et le
-seul moyen de s'en premunir est de l'ecrire noir sur blanc dans un test.
+The central test in this file is `test_no_leakage_from_the_future`. Data
+leakage raises no error: it produces a flattering score and a useless model.
+It is the most expensive bug in the discipline, and the only way to guard
+against it is to write it down, explicitly, in a test.
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from features import (
 
 
 def hourly_frame(devices=2, hours=48, start="2026-07-01") -> pd.DataFrame:
-    """Une table horaire synthetique en dents de scie, comme fct_readings_hourly."""
+    """A synthetic sawtooth hourly table, shaped like fct_readings_hourly."""
     rows = []
     times = pd.date_range(start, periods=hours, freq="h", tz="UTC")
     for d in range(1, devices + 1):
@@ -46,112 +46,112 @@ def hourly_frame(devices=2, hours=48, start="2026-07-01") -> pd.DataFrame:
 
 
 # --------------------------------------------------------------------------
-# Fuite de donnees
+# Data leakage
 # --------------------------------------------------------------------------
-def test_aucune_fuite_du_futur():
-    """Modifier le futur ne doit changer AUCUNE variable explicative.
+def test_no_leakage_from_the_future():
+    """Changing the future must change NO explanatory variable.
 
-    On construit deux jeux identiques sauf la derniere heure, puis on compare
-    les variables des heures precedentes. Si une variable regarde en avant,
-    elle differe et le test tombe.
+    We build two datasets identical except for the last hour, then compare the
+    features of the preceding hours. If a feature looks forward, it differs and
+    the test fails.
     """
     base = hourly_frame(devices=1, hours=48)
-    altere = base.copy()
-    derniere = altere.index[-1]
-    altere.loc[derniere, ["avg_soil_moisture_pct", "min_soil_moisture_pct"]] = [5.0, 4.0]
+    altered = base.copy()
+    last = altered.index[-1]
+    altered.loc[last, ["avg_soil_moisture_pct", "min_soil_moisture_pct"]] = [5.0, 4.0]
 
     f_base = build_features(base)
-    f_altere = build_features(altere)
+    f_altered = build_features(altered)
 
-    commun = min(len(f_base), len(f_altere)) - 1      # on exclut la ligne modifiee
+    common = min(len(f_base), len(f_altered)) - 1      # exclude the modified row
     pd.testing.assert_frame_equal(
-        f_base.loc[: commun - 1, FEATURE_COLUMNS],
-        f_altere.loc[: commun - 1, FEATURE_COLUMNS],
+        f_base.loc[: common - 1, FEATURE_COLUMNS],
+        f_altered.loc[: common - 1, FEATURE_COLUMNS],
     )
 
 
-def test_la_cible_regarde_bien_l_heure_suivante():
+def test_the_target_really_looks_at_the_next_hour():
     frame = hourly_frame(devices=1, hours=48)
     features = build_features(frame, threshold=IRRIGATION_THRESHOLD_PCT)
-    fusion = features.merge(
+    merged = features.merge(
         frame[["device_id", "hour_start", "min_soil_moisture_pct"]]
         .assign(hour_start=lambda d: d["hour_start"] - pd.Timedelta(hours=1))
-        .rename(columns={"min_soil_moisture_pct": "min_suivant"}),
+        .rename(columns={"min_soil_moisture_pct": "next_min"}),
         on=["device_id", "hour_start"], how="inner")
-    attendu = (fusion["min_suivant"] < IRRIGATION_THRESHOLD_PCT).astype(float)
-    assert (fusion[TARGET_COLUMN] == attendu).all()
+    expected = (merged["next_min"] < IRRIGATION_THRESHOLD_PCT).astype(float)
+    assert (merged[TARGET_COLUMN] == expected).all()
 
 
-def test_les_retards_sont_calcules_par_appareil():
-    """Un decalage global melangerait les capteurs entre eux."""
+def test_lags_are_computed_per_device():
+    """A global shift would mix the sensors with one another."""
     frame = hourly_frame(devices=3, hours=30)
     features = build_features(frame)
-    for _, groupe in features.groupby("device_id"):
-        ecart = groupe["hour_start"].diff().dropna()
-        assert (ecart == pd.Timedelta(hours=1)).all()
+    for _, group in features.groupby("device_id"):
+        gap = group["hour_start"].diff().dropna()
+        assert (gap == pd.Timedelta(hours=1)).all()
 
 
-def test_l_heure_est_encodee_sur_un_cercle():
-    """23 h et 00 h doivent etre voisines, pas aux antipodes."""
+def test_the_hour_is_encoded_on_a_circle():
+    """23:00 and 00:00 must be neighbours, not opposites."""
     frame = hourly_frame(devices=1, hours=48)
     features = build_features(frame).set_index("hour_start")
-    minuit = features[features.index.hour == 0].iloc[0]
-    onze = features[features.index.hour == 23].iloc[0]
-    distance = np.hypot(minuit["hour_sin"] - onze["hour_sin"],
-                        minuit["hour_cos"] - onze["hour_cos"])
+    midnight = features[features.index.hour == 0].iloc[0]
+    eleven_pm = features[features.index.hour == 23].iloc[0]
+    distance = np.hypot(midnight["hour_sin"] - eleven_pm["hour_sin"],
+                        midnight["hour_cos"] - eleven_pm["hour_cos"])
     assert distance < 0.3
 
 
-def test_aucune_valeur_manquante_en_sortie():
+def test_no_missing_value_in_the_output():
     features = build_features(hourly_frame(devices=2, hours=48))
     assert not features[FEATURE_COLUMNS].isna().any().any()
 
 
 # --------------------------------------------------------------------------
-# Decoupage temporel
+# Time-based split
 # --------------------------------------------------------------------------
-def test_le_decoupage_est_chronologique():
+def test_the_split_is_chronological():
     features = build_features(hourly_frame(devices=2, hours=200))
     train, test = time_split(features, 0.7)
     assert train["hour_start"].max() <= test["hour_start"].min()
 
 
-def test_aucune_heure_ne_se_retrouve_des_deux_cotes():
+def test_no_hour_ends_up_on_both_sides():
     features = build_features(hourly_frame(devices=2, hours=200))
     train, test = time_split(features, 0.7)
     assert set(train["hour_start"]).isdisjoint(set(test["hour_start"]))
 
 
-def test_les_proportions_sont_respectees():
+def test_the_proportions_are_respected():
     features = build_features(hourly_frame(devices=2, hours=200))
     train, test = time_split(features, 0.7)
     assert len(train) + len(test) == len(features)
     assert 0.6 < len(train) / len(features) < 0.8
 
 
-def test_un_cote_vide_echoue_bruyamment():
-    """Mieux vaut une erreur qu'un jeu de test vide et un score absurde.
+def test_an_empty_side_fails_loudly():
+    """An error beats an empty test set and a meaningless score.
 
-    Cinq heures d'historique pour un seul appareil ne laissent qu'une ligne
-    exploitable une fois les trois retards et la cible calcules : le cote test
-    serait vide. `time_split` refuse plutot que de rendre un DataFrame vide,
-    sur lequel les metriques vaudraient 0 sans que rien ne l'explique.
+    Four hours of history for a single device leave exactly one usable row once
+    the three lags and the target are computed: the test side would be empty.
+    `time_split` refuses rather than returning an empty DataFrame, on which the
+    metrics would read 0 with nothing to explain why.
 
-    Note : `time_split` ne juge que la validite structurelle du decoupage.
-    Le volume suffisant pour entrainer est du ressort de `train.py`, qui
-    refuse en dessous de `--min-rows`.
+    Note: `time_split` only judges the structural validity of the split. Having
+    enough volume to train is `train.py`'s responsibility, and it refuses below
+    `--min-rows`.
     """
     frame = build_features(hourly_frame(devices=1, hours=4))
-    assert len(frame) == 1, "quatre heures ne laissent qu'une ligne exploitable"
+    assert len(frame) == 1, "four hours leave only one usable row"
     with pytest.raises(ValueError, match="Empty split"):
         time_split(frame, 0.7)
 
 
-def test_deux_lignes_suffisent_structurellement():
-    """La frontiere exacte, documentee : deux lignes se coupent en 1 + 1.
+def test_two_rows_are_structurally_enough():
+    """The exact boundary, documented: two rows split into 1 + 1.
 
-    Cinq heures d'historique donnent deux lignes : trois sont perdues par les
-    retards a 1, 2 et 3 heures, une par la cible qui regarde l'heure suivante.
+    Five hours of history give two rows: three are lost to the 1, 2 and 3 hour
+    lags, and one to the target, which looks at the next hour.
     """
     frame = build_features(hourly_frame(devices=1, hours=5))
     assert len(frame) == 2
@@ -161,19 +161,19 @@ def test_deux_lignes_suffisent_structurellement():
 
 
 @pytest.mark.parametrize("fraction", [0.0, 1.0, -0.5, 1.5])
-def test_fraction_invalide_refusee(fraction):
+def test_an_invalid_fraction_is_refused(fraction):
     with pytest.raises(ValueError):
         time_split(build_features(hourly_frame(devices=2, hours=100)), fraction)
 
 
 # --------------------------------------------------------------------------
-# Reference metier
+# Business baseline
 # --------------------------------------------------------------------------
-def test_la_regle_metier_est_deterministe():
+def test_the_business_rule_is_deterministic():
     features = build_features(hourly_frame(devices=2, hours=60))
     assert (rule_baseline(features) == rule_baseline(features)).all()
 
 
-def test_la_regle_metier_ne_rend_que_des_0_et_des_1():
+def test_the_business_rule_only_returns_0_and_1():
     features = build_features(hourly_frame(devices=2, hours=60))
     assert set(rule_baseline(features).unique()) <= {0, 1}

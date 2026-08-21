@@ -4,18 +4,18 @@ version: 2
 sources:
   - name: lake
     description: >
-      Parquet ecrits par le job Spark Structured Streaming, dans MinIO.
-      Partitionnes par site_id et par date d'evenement.
+      Parquet files written to MinIO by the Spark Structured Streaming job,
+      partitioned by site_id and by event date.
     schema: main
     tables:
       - name: telemetry
-        description: Mesures ayant passe les trois portes qualite.
+        description: Readings that passed the three quality gates.
         meta:
           external_location: >-
             read_parquet('s3://{{ env_var('MINIO_BUCKET', 'irrigation') }}/telemetry/**/*.parquet',
                          hive_partitioning = true)
       - name: quarantine
-        description: Mesures rejetees, avec leur motif et le payload d'origine.
+        description: Rejected readings, with their reason and the original payload.
         meta:
           external_location: >-
             read_parquet('s3://{{ env_var('MINIO_BUCKET', 'irrigation') }}/quarantine/**/*.parquet',
