@@ -116,7 +116,7 @@ working system with no manual clicking.
 
 ## Quick start
 
-**Requirements:** Docker Desktop, Git, Python 3.11+. The stack binds ports 1883,
+**Requirements:** Docker Desktop, Git, Python 3.12. The stack binds ports 1883,
 3000, 4040, 8000–8082, 9000, 9001, 9090 and 27017 — stop anything already using
 them, including another copy of this project.
 
@@ -426,7 +426,7 @@ docker compose up -d
 pytest -m integration
 ```
 
-CI runs four jobs on every push: ruff, the 71 unit tests, `dbt parse`, and
+CI runs four jobs on every push: ruff, the 71 full test suite (57 unit + 14 Spark), `dbt parse`, and
 `docker compose config` — the last one catches broken YAML anchors and missing
 environment variables before they break someone else's clone.
 
